@@ -1,0 +1,40 @@
+services:
+  # The Backend Engine (Node.js)
+  app:
+    build: ./backend
+    container_name: ceivoice_backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/usr/src/app
+    environment:
+      - DB_HOST=db
+      - DB_USER=support_user
+      - DB_PASSWORD=support_password
+      - DB_NAME=ceivoice
+    depends_on:
+      - db
+
+  # The Database (MySQL)
+  db:
+    image: mysql:8.0
+    container_name: ceivoice_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: ceivoice
+      MYSQL_USER: support_user
+      MYSQL_PASSWORD: support_password
+    ports:
+      - "3308:3306" # <--- CHANGED: Windows sees 3308, Docker sees 3306
+
+  # The Control Panel (phpMyAdmin)
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: ceivoice_admin
+    ports:
+      - "8081:80"   # <--- CHANGED: This is the standard web port for phpMyAdmin
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: root_password
+    depends_on:
+      - db
