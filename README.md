@@ -45,15 +45,6 @@ npm run dev
 ```
 ---
 
-### 5. Start Backend
-```bash
-cd backend
-npm install
-node server.js
-```
----
-
-
 ### Access URLs
 Frontend:
 http://localhost:5173
