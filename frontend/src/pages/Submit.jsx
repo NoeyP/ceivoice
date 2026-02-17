@@ -1,6 +1,6 @@
 export default function Submit() {
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl mx-auto">
       <h1 className="text-3xl font-bold mb-2">Submit Request</h1>
       <p className="text-slate-600 mb-8">
         Fill in the form below to submit a support request.
