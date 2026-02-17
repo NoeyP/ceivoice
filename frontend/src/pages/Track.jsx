@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-// ✅ Toggle this during checkpoint if backend isn't ready
 const USE_MOCK = true;
 
-// --- mock data (safe for demo) ---
 const mockTicket = (id) => ({
   id,
   trackingId: id,
   title: "Cannot access HR portal",
   category: "Technical Support",
-  status: "Solving", // Draft | New | Assigned | Solving | Solved | Failed | Renew
+  status: "Solving",
   createdAt: "2026-02-15T08:30:00Z",
   deadline: "2026-02-18T12:00:00Z",
   summary: "User reports HR portal access issue after password reset.",
@@ -61,7 +59,6 @@ export default function Track() {
   const params = useParams();
   const [searchParams] = useSearchParams();
 
-  // supports /track/:trackingId and /track?tid=xxx
   const initialTid = params.trackingId || searchParams.get("tid") || "";
 
   const [inputTid, setInputTid] = useState(initialTid);
@@ -88,8 +85,6 @@ export default function Track() {
         return;
       }
 
-      // ✅ Change to match your backend route
-      // Example: GET /api/tickets/public/:trackingId
       const res = await fetch(`/api/tickets/public/${encodeURIComponent(tid)}`);
       if (!res.ok) throw new Error("Ticket not found or server error");
       const data = await res.json();
@@ -128,8 +123,6 @@ export default function Track() {
         return;
       }
 
-      // ✅ Change to match your backend route
-      // Example: POST /api/tickets/:ticketId/comments  { message, visibility:"public" }
       const res = await fetch(`/api/tickets/${encodeURIComponent(ticket.id)}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -151,22 +144,18 @@ export default function Track() {
     }
   }
 
-  // auto-load if opened with an ID
   useEffect(() => {
     if (initialTid) {
       setActiveTid(initialTid);
       fetchTicket(initialTid);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTid]);
 
   function onTrack() {
     const tid = inputTid.trim();
     if (!tid) return;
     setActiveTid(tid);
-    // push to URL so it’s shareable:
     navigate(`/track/${encodeURIComponent(tid)}`);
-    // fetchTicket will run from useEffect because params changes
   }
 
   return (
