@@ -9,6 +9,7 @@ Support AI-enhanced Support Ticket Management System
 ### 1. Start Docker
 
 From project root (Start Docker now also execute both node server.js and npm start, if not then contact Noey.): 
+You also need Dockerfile and package.json in backend for this command to work.
 
 ```bash
 docker-compose up --build
