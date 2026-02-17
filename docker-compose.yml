@@ -3,18 +3,20 @@ services:
   app:
     build: ./backend
     container_name: ceivoice_backend
+    restart: always # Keeps trying until the DB is ready
     ports:
       - "3000:3000"
     volumes:
       - ./backend:/usr/src/app
+    # We REMOVED the "env_file" block because the file is now in the ROOT
     environment:
       - DB_HOST=db
       - DB_USER=support_user
       - DB_PASSWORD=support_password
       - DB_NAME=ceivoice
+      - OPENAI_API_KEY=${OPENAI_API_KEY} # Docker automatically pulls this from the .env in the root
     depends_on:
       - db
-
   # The Database (MySQL)
   db:
     image: mysql:8.0
@@ -25,14 +27,14 @@ services:
       MYSQL_USER: support_user
       MYSQL_PASSWORD: support_password
     ports:
-      - "3308:3306" # <--- CHANGED: Windows sees 3308, Docker sees 3306
+      - "3308:3306" 
 
   # The Control Panel (phpMyAdmin)
   phpmyadmin:
     image: phpmyadmin:latest
     container_name: ceivoice_admin
     ports:
-      - "8081:80"   # <--- CHANGED: This is the standard web port for phpMyAdmin
+      - "8081:80"
     environment:
       PMA_HOST: db
       MYSQL_ROOT_PASSWORD: root_password
