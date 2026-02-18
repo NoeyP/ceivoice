@@ -61,4 +61,5 @@ http://localhost:8081
 ```bash
 user:root
 pw:root_password
+If you use support_user and support_pw then you can only view but can't edit db.
 ```
