@@ -33,7 +33,7 @@ docker-compose down -v
 ```
 ---
 
-### Read!!!
+## Read!!!
 ### .env file
 I've already implemented ai logic into the code, so you guys will need this file.
 For submitting tickets to work. Devs need to create .env file and put openai key from openai api platform then click generate key.
