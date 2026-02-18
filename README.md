@@ -9,7 +9,7 @@ Support AI-enhanced Support Ticket Management System
 ### 1. Start Docker and frontend.
 
 From project root (Start Docker now also execute both node server.js and npm start, if not then contact Noey.): 
-You also need both Dockerfiles and package.json in backend for this command to work. This step should be taking quite a while
+You also need both __Dockerfiles__ and __package.json__ in backend for this command to work. This step should be taking quite a while
 if you are doing it for the first time.
 
 ```bash
@@ -36,7 +36,7 @@ docker-compose down -v
 ## Read!!!
 ### .env file
 I've already implemented ai logic into the code, so you guys will need this file.
-For submitting tickets to work. Devs need to create .env file and put openai key from openai api platform then click generate key.
+For submitting tickets to work. Devs need to create __.env__ file and put openai key from openai api platform then click generate key.
 Then put the following code.
 ```bash
 OPENAI_API_KEY=
@@ -45,10 +45,10 @@ OPENAI_API_KEY=
 
 
 ### Access URLs
-Frontend:
+__Frontend:__
 http://localhost:5173
 
-phpMyAdmin:
+__phpMyAdmin:__
 http://localhost:8081
 ```bash
 user:root
