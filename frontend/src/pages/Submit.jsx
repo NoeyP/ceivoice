@@ -7,10 +7,13 @@ export default function Submit() {
       </p>
 
       <form className="bg-white border rounded-xl p-6 space-y-6">
-        {/* Email */}
+        {/* Email (required) */}
         <div>
-          <label className="block text-sm font-medium mb-2">Email</label>
+          <label className="block text-sm font-medium mb-2">
+            Email <span className="text-red-500">*</span>
+          </label>
           <input
+            required
             type="email"
             placeholder="Enter your email..."
             className="w-full border rounded-lg px-3 py-2"
