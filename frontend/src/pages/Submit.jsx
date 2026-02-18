@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Submit() {
   // --- YOUR BRAIN (Logic) ---
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,9 +19,14 @@ export default function Submit() {
       });
       const data = await response.json();
       if (response.ok) {
-        alert(`Success! Ticket ID: ${data.trackingId}`);
+        const trackingId = data.trackingId;
         setEmail('');
         setMessage('');
+
+        navigate("/success", {
+          state: { trackingId, email },
+          replace: true,
+        });
       } else {
         alert(`Error: ${data.error}`);
       }

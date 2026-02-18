@@ -4,6 +4,7 @@ import { Link } from "react-router-dom"
 
 import Submit from "./pages/Submit"
 import Track from "./pages/Track"
+import Success from "./pages/Success.jsx"
 
 export default function App() {
   return (
@@ -59,7 +60,7 @@ export default function App() {
                 </h2>
 
                 <p className='text-lg md:text-xl leading-relaxed text-slate-600 max-w-4xl mb-10'>
-                CEiVoice is an AI-powered support ticket system designed to streamline issue reporting and resolution. Submit your request in seconds, track real-time updates, and stay informed throughout the entire support process.
+                  CEiVoice is an AI-powered support ticket system designed to streamline issue reporting and resolution. Submit your request in seconds, track real-time updates, and stay informed throughout the entire support process.
                 </p>
 
                 <div className='flex flex-col sm:flex-row gap-4'>
@@ -79,6 +80,8 @@ export default function App() {
           <Route path="/submit" element={<Submit />} />
 
           <Route path="/track" element={<Track />} />
+
+          <Route path='/success' element={<Success />} />
 
         </Routes>
 
