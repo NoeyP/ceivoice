@@ -29,6 +29,7 @@ docker-compose restart app
 ---
 
 ### 3. Down Docker
+Before shutting off everything, this step is crucial so that u guys can work with other projects without docker confusing ports and shit.
 use -v version for removing all newly created tickets.
 ```bash
 docker-compose down
