@@ -64,3 +64,16 @@ user:root
 pw:root_password
 If you use support_user and support_pw then you can only view but can't edit db.
 ```
+---
+### myphpadmin ticket table code
+paste this code into sql tab
+```bash
+CREATE TABLE IF NOT EXISTS tickets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    trackingId VARCHAR(50) NOT NULL,
+    status ENUM('open', 'in-progress', 'closed') DEFAULT 'open',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
