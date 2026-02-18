@@ -6,7 +6,7 @@ Support AI-enhanced Support Ticket Management System
 
 ## Setup
 
-### 1. Start Docker
+### 1. Start Docker and frontend.
 
 From project root (Start Docker now also execute both node server.js and npm start, if not then contact Noey.): 
 You also need Dockerfile and package.json in backend for this command to work.
@@ -14,6 +14,11 @@ You also need Dockerfile and package.json in backend for this command to work.
 ```bash
 docker-compose up --build
 ```
+You also need to go to frontend and cmd there then type the following to start up the vite.
+```bash
+npm run dev
+```
+
 ---
 ### 2. Restart Docker
 
