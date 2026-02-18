@@ -1,22 +1,36 @@
 services:
+  # The Interface (Vite/React)
+  frontend:
+    build: ./frontend
+    container_name: ceivoice_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/usr/src/app
+      - /usr/src/app/node_modules # Prevents local node_modules from overwriting container ones
+    environment:
+      - VITE_API_URL=http://localhost:3000
+    depends_on:
+      - app
+
   # The Backend Engine (Node.js)
   app:
     build: ./backend
     container_name: ceivoice_backend
-    restart: always # Keeps trying until the DB is ready
+    restart: always
     ports:
       - "3000:3000"
     volumes:
       - ./backend:/usr/src/app
-    # We REMOVED the "env_file" block because the file is now in the ROOT
     environment:
       - DB_HOST=db
       - DB_USER=support_user
       - DB_PASSWORD=support_password
       - DB_NAME=ceivoice
-      - OPENAI_API_KEY=${OPENAI_API_KEY} # Docker automatically pulls this from the .env in the root
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - db
+
   # The Database (MySQL)
   db:
     image: mysql:8.0
@@ -26,8 +40,11 @@ services:
       MYSQL_DATABASE: ceivoice
       MYSQL_USER: support_user
       MYSQL_PASSWORD: support_password
+    command: --default-authentication-plugin=mysql_native_password
     ports:
       - "3308:3306" 
+    volumes:
+      - db_data:/var/lib/mysql
 
   # The Control Panel (phpMyAdmin)
   phpmyadmin:
@@ -40,3 +57,6 @@ services:
       MYSQL_ROOT_PASSWORD: root_password
     depends_on:
       - db
+
+volumes:
+  db_data:
