@@ -58,3 +58,7 @@ http://localhost:5173
 
 phpMyAdmin:
 http://localhost:8081
+```bash
+user:root
+pw:root_password
+```
