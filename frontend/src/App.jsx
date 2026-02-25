@@ -1,5 +1,5 @@
 import logo from "./assets/cei-logo.png";
-import { Routes, Route, Link, Navigate } from "react-router-dom";
+import { Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 
 import Submit from "./pages/Submit";
@@ -7,10 +7,13 @@ import Track from "./pages/Track";
 import Success from "./pages/Success.jsx";
 import Login from "./pages/Login";
 import Register from "./pages/Register.jsx";
+import Admin from "./pages/Admin.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
 
 export default function App() {
-  // Load user from localStorage on first render (prevents “redirect to login but navbar shows logged in” bug)
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith("/admin");
+
   const [user, setUser] = useState(() => {
     try {
       const stored = localStorage.getItem("ceivoice_user");
@@ -43,70 +46,64 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Navbar */}
-      <nav className="bg-white border-b border-slate-200/80">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-          {/* LEFT SIDE: Logo + Text */}
-          <Link to="/" className="flex items-center gap-3">
-            <img
-              src={logo}
-              alt="CEiVoice Logo"
-              className="h-10 w-10 object-contain"
-            />
-            <h1 className="text-2xl font-bold tracking-tight">CEiVoice</h1>
-          </Link>
+    <div className={`min-h-screen ${isAdminRoute ? "bg-slate-50" : "bg-white"}`}>
+      {!isAdminRoute ? (
+        <nav className="bg-white border-b border-slate-200/80">
+          <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+            <Link to="/" className="flex items-center gap-3">
+              <img
+                src={logo}
+                alt="CEiVoice Logo"
+                className="h-10 w-10 object-contain"
+              />
+              <h1 className="text-2xl font-bold tracking-tight">CEiVoice</h1>
+            </Link>
 
-          {/* RIGHT SIDE */}
-          <div className="flex items-center gap-6">
-            {/* Only show nav links if logged in */}
-            {user ? (
-              <>
-                <Link
-                  to="/submit"
-                  className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
-                >
-                  Submit
-                </Link>
-
-                <Link
-                  to="/track"
-                  className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
-                >
-                  Track
-                </Link>
-
-                <div className="relative" ref={menuRef}>
-                  {/* Username button */}
-                  <button
-                    onClick={() => setMenuOpen(!menuOpen)}
-                    className="text-sm font-medium text-slate-700 hover:text-slate-900"
+            <div className="flex items-center gap-6">
+              {user ? (
+                <>
+                  <Link
+                    to="/submit"
+                    className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
                   >
-                    login as {user.username} 🔻
-                  </button>
+                    Submit
+                  </Link>
 
-                  {/* Dropdown menu */}
-                  {menuOpen && (
-                    <div className="absolute right-0 mt-2 w-32 bg-white border rounded-lg shadow-md">
-                      <button
-                        onClick={handleLogout}
-                        className="block w-full text-left px-4 py-2 text-sm hover:bg-slate-100"
-                      >
-                        Logout
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : null}
+                  <Link
+                    to="/track"
+                    className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
+                  >
+                    Track
+                  </Link>
+
+                  <div className="relative" ref={menuRef}>
+                    <button
+                      onClick={() => setMenuOpen(!menuOpen)}
+                      className="text-sm font-medium text-slate-700 hover:text-slate-900"
+                    >
+                      login as {user.username}
+                    </button>
+
+                    {menuOpen && (
+                      <div className="absolute right-0 mt-2 w-32 bg-white border rounded-lg shadow-md">
+                        <button
+                          onClick={handleLogout}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-slate-100"
+                        >
+                          Logout
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
+      ) : null}
 
-      {/* Main content */}
-      <main className="max-w-6xl mx-auto px-6 py-20 md:py-28">
+      <main className={isAdminRoute ? "" : "max-w-6xl mx-auto px-6 py-20 md:py-28"}>
         <Routes>
-          {/* Home is protected */}
           <Route
             path="/"
             element={
@@ -174,7 +171,15 @@ export default function App() {
             }
           />
 
-          {/* Public routes */}
+          <Route
+            path="/admin"
+            element={
+              <RequireAuth user={user}>
+                <Admin />
+              </RequireAuth>
+            }
+          />
+
           <Route
             path="/login"
             element={user ? <Navigate to="/" replace /> : <Login onLogin={setUser} />}
@@ -184,7 +189,6 @@ export default function App() {
             element={user ? <Navigate to="/" replace /> : <Register />}
           />
 
-          {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
