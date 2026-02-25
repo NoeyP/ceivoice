@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Submit() {
@@ -7,6 +7,17 @@ export default function Submit() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+
+    const storedUser = localStorage.getItem('ceivoice_user');
+
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
+
+      setEmail(user.email);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,12 +63,12 @@ export default function Submit() {
             Email <span className="text-red-500">*</span>
           </label>
           <input
-            required
+            readOnly
             type="email"
             value={email} // YOUR LOGIC
             onChange={(e) => setEmail(e.target.value)} // YOUR LOGIC
             placeholder="Enter your email..."
-            className="w-full border rounded-lg px-3 py-2"
+            className="w-full border rounded-lg px-3 py-2 bg-slate-100"
           />
         </div>
 
