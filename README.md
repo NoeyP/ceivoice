@@ -59,7 +59,7 @@ If you use support_user and support_pw then you can only view but can't edit db.
 ### Myphpadmin ticket table code
 paste this code into sql tab. I will fix this by creating db file and put sql code there later.
 ```bash
-CREATE TABLE tickets (
+CREATE TABLE IF NOT EXISTS tickets (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_email VARCHAR(255) NOT NULL,
     original_message TEXT NOT NULL,
@@ -67,4 +67,13 @@ CREATE TABLE tickets (
     status VARCHAR(50) DEFAULT 'Draft',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) DEFAULT NULL,
+  google_sub VARCHAR(255) UNIQUE DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
 ```
