@@ -9,18 +9,14 @@ Support AI-enhanced Support Ticket Management System
 ### 1. Start Docker and frontend.
 
 From project root (Start Docker now also execute both node server.js and npm start, if not then contact Noey.): 
-You also need Dockerfile and package.json in backend for this command to work. This step should be taking quite a while
+You also need both __Dockerfiles__ and __package.json__ in backend for this command to work. This step should be taking quite a while
 if you are doing it for the first time.
 
 ```bash
 docker-compose up --build
 ```
-If that shit doesn't work then you also need to go to frontend and cmd there then type the following to start up the vite.
-```bash
-npm run dev
-```
-
 ---
+
 ### 2. Restart Docker
 
 ```bash
@@ -29,6 +25,7 @@ docker-compose restart app
 ---
 
 ### 3. Down Docker
+Before shutting off everything, this step is crucial so that u guys can work with other projects without docker confusing ports and shit.
 use -v version for removing all newly created tickets.
 ```bash
 docker-compose down
@@ -36,29 +33,47 @@ docker-compose down -v
 ```
 ---
 
-### 3. .env file
-
-For submitting tickets to work. Devs need to create .env file and put openai key from openai api platform then click generate key.
+## Read!!!
+### .env file
+I've already implemented ai logic into the code, so you guys will need this file.
+For submitting tickets to work. Devs need to create __.env__ file and put openai key from openai api platform then click generate key.
 Then put the following code.
 ```bash
 OPENAI_API_KEY=
 ```
 ---
-### 4. Start Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
----
+
 
 ### Access URLs
-Frontend:
+__Frontend:__
 http://localhost:5173
 
-phpMyAdmin:
+__phpMyAdmin:__
 http://localhost:8081
 ```bash
 user:root
 pw:root_password
+If you use support_user and support_pw then you can only view but can't edit db.
+```
+---
+### Myphpadmin ticket table code
+paste this code into sql tab. I will fix this by creating db file and put sql code there later.
+```bash
+CREATE TABLE IF NOT EXISTS tickets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_email VARCHAR(255) NOT NULL,
+    original_message TEXT NOT NULL,
+    ai_analysis TEXT, 
+    status VARCHAR(50) DEFAULT 'Draft',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) DEFAULT NULL,
+  google_sub VARCHAR(255) UNIQUE DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
 ```

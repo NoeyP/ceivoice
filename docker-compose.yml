@@ -22,6 +22,7 @@ services:
       - "3000:3000"
     volumes:
       - ./backend:/usr/src/app
+      - /usr/src/app/node_modules
     environment:
       - DB_HOST=db
       - DB_USER=support_user
@@ -29,12 +30,18 @@ services:
       - DB_NAME=ceivoice
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   # The Database (MySQL)
   db:
     image: mysql:8.0
     container_name: ceivoice_db
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot_password"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     environment:
       MYSQL_ROOT_PASSWORD: root_password
       MYSQL_DATABASE: ceivoice
@@ -56,7 +63,8 @@ services:
       PMA_HOST: db
       MYSQL_ROOT_PASSWORD: root_password
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   db_data:

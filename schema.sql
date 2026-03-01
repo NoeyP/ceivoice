@@ -1,11 +1,17 @@
-CREATE TABLE tickets (
-    id SERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS tickets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
     user_email VARCHAR(255) NOT NULL,
-    raw_message TEXT NOT NULL,
-    ai_title VARCHAR(100),
-    ai_summary TEXT,
-    category VARCHAR(50),
-    status VARCHAR(20) DEFAULT 'Draft', -- Draft, Open, In Progress, Resolved
-    parent_ticket_id INTEGER REFERENCES tickets(id), -- The "Whole Family" link
+    original_message TEXT NOT NULL,
+    ai_analysis TEXT, 
+    status VARCHAR(50) DEFAULT 'Draft',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) DEFAULT NULL,
+  google_sub VARCHAR(255) UNIQUE DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)

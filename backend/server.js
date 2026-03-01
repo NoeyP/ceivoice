@@ -6,6 +6,7 @@ const cors = require('cors');
 const app = express();
 app.use(cors()); // Allow the frontend to talk to the backend
 app.use(express.json());
+const crypto = require("crypto");
 
 const connection = mysql.createConnection({
   host: process.env.DB_HOST || 'db',
@@ -18,6 +19,98 @@ const connection = mysql.createConnection({
 // Initialize OpenAI (EP02-ST001)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// register stuff
+app.post("/api/register", (req, res) => {
+  const { username, email, password } = req.body || {};
+
+  if (!username || !email || !password) {
+    return res.status(400).json({ error: "Username, email, and password are required." });
+  }
+
+  const cleanUsername = String(username).trim();
+  const cleanEmail = String(email).trim().toLowerCase();
+
+  if (!cleanUsername || !cleanEmail || !String(password)) {
+    return res.status(400).json({ error: "Invalid input." });
+  }
+
+  const passwordHash = hashPassword(String(password));
+
+  const sql = `
+    INSERT INTO users (username, email, password_hash)
+    VALUES (?, ?, ?)
+    `;
+
+  connection.query(sql, [cleanUsername, cleanEmail, passwordHash], (err, result) => {
+    if (err) {
+      // duplicate username/email
+      if (err.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({ error: "Username or email already exists." });
+      }
+      console.error("❌ Register DB Error:", err);
+      return res.status(500).json({ error: "Database failure" });
+    }
+
+    return res.status(201).json({
+      success: true,
+      user: {
+        id: result.insertId,
+        username: cleanUsername,
+        email: cleanEmail,
+      },
+    });
+  });
+});
+
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body || {};
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "username and password are required." });
+  }
+
+  const cleanUsername = String(username).trim();
+
+  const sql = `
+    SELECT id, username, email, password_hash, google_sub
+    FROM users
+    WHERE username = ?
+    LIMIT 1
+    `;
+
+  connection.query(sql, [cleanUsername], (err, rows) => {
+    if (err) {
+      console.error("❌ Login DB Error:", err);
+      return res.status(500).json({ error: "Database failure" });
+    }
+
+    if (!rows || rows.length === 0) {
+      return res.status(401).json({ error: "Invalid username or password." });
+    }
+
+    const user = rows[0];
+
+    // If this account was created by Google login (password_hash is NULL)
+    if (!user.password_hash) {
+      return res.status(401).json({ error: "This account uses Google login." });
+    }
+
+    const ok = verifyPassword(String(password), user.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: "Invalid username or password." });
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+      },
+    });
+  });
+});
+
 app.post('/api/tickets', (req, res) => {
   const { email, message } = req.body;
 
@@ -26,7 +119,7 @@ app.post('/api/tickets', (req, res) => {
   }
 
   const sql = 'INSERT INTO tickets (user_email, original_message, status) VALUES (?, ?, "Draft")';
-  
+
   connection.query(sql, [email, message], (err, result) => {
     if (err) {
       console.error("❌ DB Error:", err);
@@ -39,13 +132,40 @@ app.post('/api/tickets', (req, res) => {
     // We run this without 'await' so the user gets their response immediately
     analyzeTicketWithAI(trackingId, message);
 
-    res.status(201).json({ 
-      success: true, 
+    res.status(201).json({
+      success: true,
       trackingId: trackingId,
-      message: "Ticket created as Draft. AI analysis starting..." 
+      message: "Ticket created as Draft. AI analysis starting..."
     });
   });
 });
+
+
+// Login stuff
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derivedKey = crypto.scryptSync(password, salt, 64);
+  return `${salt}:${derivedKey.toString("hex")}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored || typeof stored !== "string") return false;
+
+  const parts = stored.split(":");
+  if (parts.length !== 2) return false;
+
+  const [salt, hashHex] = parts;
+  if (!salt || !hashHex) return false;
+
+  const derivedKey = crypto.scryptSync(password, salt, 64);
+  const hashBuf = Buffer.from(hashHex, "hex");
+
+  // If DB value is corrupted / wrong format, avoid crashing
+  if (hashBuf.length !== derivedKey.length) return false;
+
+  return crypto.timingSafeEqual(hashBuf, derivedKey);
+}
+
 
 // AI Analysis Logic (EP02 Core)
 async function analyzeTicketWithAI(id, text) {
@@ -59,7 +179,7 @@ async function analyzeTicketWithAI(id, text) {
     });
 
     const analysis = response.choices[0].message.content;
-    
+
     // Update the record with AI results
     const updateSql = 'UPDATE tickets SET ai_analysis = ?, status = "Analyzed" WHERE id = ?';
     connection.query(updateSql, [analysis, id]);
@@ -70,6 +190,6 @@ async function analyzeTicketWithAI(id, text) {
 }
 
 const PORT = 3000; // Backend Checker
-app.listen(PORT, '0.0.0.0', () => { 
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend listening on port ${PORT}`);
 });
