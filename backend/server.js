@@ -8,6 +8,8 @@ const app = express();
 app.use(cors()); // Allow the frontend to talk to the backend
 app.use(express.json());
 const crypto = require("crypto");
+const { OAuth2Client } = require('google-auth-library');
+
 
 const connection = mysql.createConnection({
   host: process.env.DB_HOST || 'db',
@@ -113,42 +115,49 @@ app.post("/api/login", (req, res) => {
 });
 
 app.post('/api/tickets', (req, res) => {
-  const { email, message } = req.body;
+  // 1. Destructure the extra fields from the frontend
+  const { email, message, title, category } = req.body; 
 
   if (!email || !message) {
     return res.status(400).json({ error: "Email and message are required." });
   }
 
-  const sql = 'INSERT INTO tickets (user_email, original_message, status) VALUES (?, ?, "Draft")';
+  // 2. Generate the "Unique Link" string (e.g., TIC-174110)
+  const trackingIdStr = `TIC-${Date.now()}`; 
 
-  connection.query(sql, [email, message], async (err, result) => {
+  // 3. Update SQL to fill the new columns (tracking_id, title, category)
+  const sql = 'INSERT INTO tickets (tracking_id, user_email, title, category, original_message, status) VALUES (?, ?, ?, ?, ?, "New")';
+
+  connection.query(sql, [trackingIdStr, email, title || "Support Request", category || "General", message], async (err, result) => {
     if (err) {
       console.error("❌ DB Error:", err);
       return res.status(500).json({ error: "Database failure" });
     }
 
-    const trackingId = result.insertId;
+    const dbId = result.insertId;
 
-    // 1. Trigger AI (Background)
-    analyzeTicketWithAI(trackingId, message);
+    // Trigger AI using the numeric ID for internal lookups
+    analyzeTicketWithAI(dbId, message);
 
-    // 2. TRIGGER EMAIL (Add this part here!)
+    // 4. Update the email to send the tracking link
     try {
+      const trackingUrl = `http://localhost:5173/track/${trackingIdStr}`;
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
         to: email,
         subject: 'Request Received - CEiVoice',
-        text: `Hello! We received your message: "${message}". Ticket ID: ${trackingId}`
+        text: `Hello! We received your message. \n\nTracking ID: ${trackingIdStr}\nTrack status here: ${trackingUrl}`
       });
-      console.log("📧 Email sent successfully from /api/tickets");
+      console.log("📧 Email sent with tracking link");
     } catch (mailError) {
       console.error("❌ Email failed:", mailError.message);
     }
 
+    // 5. Send the string back so the frontend can redirect correctly
     res.status(201).json({
       success: true,
-      trackingId: trackingId,
-      message: "Ticket created. AI starting, Email attempted."
+      trackingId: trackingIdStr, 
+      message: "Ticket created successfully."
     });
   });
 });
@@ -215,3 +224,86 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// Tickets tracking system
+app.get('/api/tickets/public/:tid', (req, res) => {
+  const { tid } = req.params;
+
+  // Use connection.query (not db.execute) to match the rest of your file
+  const sql = `
+    SELECT 
+      tracking_id AS trackingId, 
+      title, category, status, 
+      created_at AS createdAt, 
+      ai_analysis AS summary 
+    FROM tickets 
+    WHERE tracking_id = ? OR id = ?`;
+
+  connection.query(sql, [tid, tid], (err, rows) => {
+    if (err) return res.status(500).json({ message: "DB Error" });
+    if (!rows || rows.length === 0) return res.status(404).json({ message: "Not found" });
+
+    const ticket = rows[0];
+    ticket.publicComments = []; // Prevent frontend crash
+    res.json(ticket);
+  });
+});
+
+// Admin Route: Update Ticket Status
+app.patch('/api/tickets/:id/status', async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body; // e.g., "Solving" or "Solved"
+
+    try {
+        const [result] = await db.execute(
+            'UPDATE tickets SET status = ? WHERE id = ?',
+            [status, id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: "Ticket not found" });
+        }
+
+        res.json({ success: true, message: `Status updated to ${status}` });
+    } catch (error) {
+        console.error("Update error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+});
+
+// Google Login/Registration
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+app.post("/api/google-login", async (req, res) => {
+  const { credential } = req.body;
+
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { sub, email, name } = payload;
+
+    // Check if user exists by google_sub OR email
+    const findSql = "SELECT id, username, email FROM users WHERE google_sub = ? OR email = ? LIMIT 1";
+    
+    connection.query(findSql, [sub, email], (err, rows) => {
+      if (rows && rows.length > 0) {
+        // User exists - Log them in
+        return res.json({ success: true, user: rows[0] });
+      } else {
+        // New User - Create them (The "Whole Family" Rule)
+        const insertSql = "INSERT INTO users (username, email, google_sub, password_hash) VALUES (?, ?, ?, NULL)";
+        connection.query(insertSql, [name, email, sub], (err, result) => {
+          if (err) return res.status(500).json({ error: "Creation failed" });
+          res.status(201).json({ 
+            success: true, 
+            user: { id: result.insertId, username: name, email: email } 
+          });
+        });
+      }
+    });
+  } catch (error) {
+    res.status(400).json({ error: "Invalid Google Token" });
+  }
+});

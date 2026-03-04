@@ -160,13 +160,10 @@ export default function App() {
             }
           />
 
-          <Route
-            path="/track"
-            element={
-              <RequireAuth user={user}>
-                <Track />
-              </RequireAuth>
-            }
+          <Route path="/track" element={<Track />} 
+          />
+          
+          <Route path="/track/:trackingId" element={<Track />} 
           />
 
           <Route

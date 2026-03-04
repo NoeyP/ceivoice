@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const mockTicket = (id) => ({
   id,
@@ -85,7 +85,7 @@ export default function Track() {
         return;
       }
 
-      const res = await fetch(`/api/tickets/public/${encodeURIComponent(tid)}`);
+      const res = await fetch(`http://localhost:3000/api/tickets/public/${encodeURIComponent(tid)}`);
       if (!res.ok) throw new Error("Ticket not found or server error");
       const data = await res.json();
       setTicket(data);
@@ -123,7 +123,8 @@ export default function Track() {
         return;
       }
 
-      const res = await fetch(`/api/tickets/${encodeURIComponent(ticket.id)}/comments`, {
+      // Change this line in submitComment:
+const res = await fetch(`http://localhost:3000/api/tickets/${encodeURIComponent(ticket.id)}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: msg, visibility: "public" }),
