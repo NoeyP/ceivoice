@@ -41,7 +41,14 @@ Then put the following code.
 ```bash
 OPENAI_API_KEY=
 ```
----
+
+For the email receipt to work, you also need to do the following. 1. Put these two lines into __.env__ 2. You get the code from https://myaccount.google.com/ 3. Don't forget to 2-FA it. 4. Search __App password__. 5. Create a name like ceivoicedocker or any shit. 5. Create and copy the secret key.
+Why? Because Google thinks snitchers could hack your school project, so they decided to take the security up a notch by providing password created specifically for this app.
+```bash
+EMAIL_USER=youremailhere
+EMAIL_PASS=codegeneratedfromgoogleaccount
+```
+
 
 
 ### Access URLs
@@ -57,7 +64,7 @@ If you use support_user and support_pw then you can only view but can't edit db.
 ```
 ---
 ### Myphpadmin ticket table code
-paste this code into sql tab. I will fix this by creating db file and put sql code there later.
+paste this code into sql tab. I will fix this by creating db file and put sql code there later. (I fixed it, no need to put the code in sql tab.)
 ```bash
 CREATE TABLE IF NOT EXISTS tickets (
     id INT AUTO_INCREMENT PRIMARY KEY,
