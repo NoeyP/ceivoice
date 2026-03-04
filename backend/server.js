@@ -3,6 +3,7 @@ const mysql = require('mysql2');
 const { OpenAI } = require('openai'); // Added for EP02
 require('dotenv').config();
 const cors = require('cors');
+const nodemailer = require('nodemailer');
 const app = express();
 app.use(cors()); // Allow the frontend to talk to the backend
 app.use(express.json());
@@ -120,7 +121,7 @@ app.post('/api/tickets', (req, res) => {
 
   const sql = 'INSERT INTO tickets (user_email, original_message, status) VALUES (?, ?, "Draft")';
 
-  connection.query(sql, [email, message], (err, result) => {
+  connection.query(sql, [email, message], async (err, result) => {
     if (err) {
       console.error("❌ DB Error:", err);
       return res.status(500).json({ error: "Database failure" });
@@ -128,18 +129,29 @@ app.post('/api/tickets', (req, res) => {
 
     const trackingId = result.insertId;
 
-    // Trigger AI Analysis (EP02-ST002)
-    // We run this without 'await' so the user gets their response immediately
+    // 1. Trigger AI (Background)
     analyzeTicketWithAI(trackingId, message);
+
+    // 2. TRIGGER EMAIL (Add this part here!)
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Request Received - CEiVoice',
+        text: `Hello! We received your message: "${message}". Ticket ID: ${trackingId}`
+      });
+      console.log("📧 Email sent successfully from /api/tickets");
+    } catch (mailError) {
+      console.error("❌ Email failed:", mailError.message);
+    }
 
     res.status(201).json({
       success: true,
       trackingId: trackingId,
-      message: "Ticket created as Draft. AI analysis starting..."
+      message: "Ticket created. AI starting, Email attempted."
     });
   });
 });
-
 
 // Login stuff
 function hashPassword(password) {
@@ -193,3 +205,13 @@ const PORT = 3000; // Backend Checker
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend listening on port ${PORT}`);
 });
+
+// 1. Create the transporter ONCE
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+

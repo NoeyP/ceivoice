@@ -1,17 +1,17 @@
-CREATE TABLE IF NOT EXISTS tickets (
+CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_email VARCHAR(255) NOT NULL,
-    original_message TEXT NOT NULL,
-    ai_analysis TEXT, 
-    status VARCHAR(50) DEFAULT 'Draft',
+    username VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    google_sub VARCHAR(255) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS users (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  username VARCHAR(100) NOT NULL UNIQUE,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) DEFAULT NULL,
-  google_sub VARCHAR(255) UNIQUE DEFAULT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
+CREATE TABLE IF NOT EXISTS tickets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_email VARCHAR(255),
+    original_message TEXT,
+    ai_analysis TEXT,
+    status VARCHAR(50) DEFAULT 'Draft',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

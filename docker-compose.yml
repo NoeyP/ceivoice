@@ -28,6 +28,8 @@ services:
       - DB_USER=support_user
       - DB_PASSWORD=support_password
       - DB_NAME=ceivoice
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASS=${EMAIL_PASS} # Pulls from your local .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       db:
