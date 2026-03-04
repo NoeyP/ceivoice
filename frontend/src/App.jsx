@@ -76,6 +76,13 @@ export default function App() {
                     Track
                   </Link>
 
+                  <Link
+                    to="/admin"
+                    className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
+                  >
+                    Admin
+                  </Link>
+
                   <div className="relative" ref={menuRef}>
                     <button
                       onClick={() => setMenuOpen(!menuOpen)}
