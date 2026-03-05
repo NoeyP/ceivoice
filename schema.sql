@@ -10,11 +10,13 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS tickets (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tracking_id VARCHAR(50) UNIQUE,
-    user_email VARCHAR(255),
+    user_id INT, -- NEW: Links directly to users.id
+    user_email VARCHAR(255), -- Keep this as a backup/reference
     title VARCHAR(255),
     category VARCHAR(100),
     original_message TEXT,
     ai_analysis TEXT,
     status VARCHAR(50) DEFAULT 'New',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );

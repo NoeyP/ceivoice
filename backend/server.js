@@ -1,16 +1,16 @@
+require('dotenv').config(); // MUST BE LINE 1
 const express = require('express');
 const mysql = require('mysql2');
-const { OpenAI } = require('openai'); // Added for EP02
-require('dotenv').config();
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const app = express();
+const Groq = require("groq-sdk"); // Importing Groq
 app.use(cors()); // Allow the frontend to talk to the backend
 app.use(express.json());
 const crypto = require("crypto");
 const { OAuth2Client } = require('google-auth-library');
 
-
+// create connection
 const connection = mysql.createConnection({
   host: process.env.DB_HOST || 'db',
   port: 3306,
@@ -18,9 +18,52 @@ const connection = mysql.createConnection({
   password: 'support_password',
   database: 'ceivoice'
 });
+const db = connection.promise();
 
-// Initialize OpenAI (EP02-ST001)
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Initialize AI(EP02-ST001)
+const groq = new Groq({ 
+  apiKey: process.env.GROQ_API_KEY 
+}); // THIS DEFINES 'groq'
+
+app.post('/api/tickets', async (req, res) => {
+  // 1. Destructure all possible names from the frontend
+  const { title, description, message, email } = req.body;
+
+  // 2. Pick the one that isn't empty (The "Whole Family" fallback)
+  const finalDescription = description || message || "No content provided";
+  const finalTitle = title || "New Support Request";
+  const finalEmail = email || "anonymous@ceivoice.com";
+  
+  const trackingIdStr = `TIC-${Date.now()}`;
+  let aiSummary = "Summary pending...";
+
+  try {
+    // Only call Groq if we actually have content to summarize
+    if (finalDescription !== "No content provided") {
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [{ role: "user", content: `Summarize: ${finalDescription}` }],
+        model: "llama-3.3-70b-versatile",
+      });
+      aiSummary = chatCompletion.choices[0]?.message?.content || aiSummary;
+    }
+  } catch (error) {
+    console.error("Groq Error:", error.message);
+  }
+
+  try {
+    // 3. Use the "final" variables to ensure NO UNDEFINED values are passed
+    const [result] = await db.execute(
+      'INSERT INTO tickets (tracking_id, title, status, user_email, ai_analysis, original_message) VALUES (?, ?, ?, ?, ?, ?)',
+      [trackingIdStr, finalTitle, 'Draft', finalEmail, aiSummary, finalDescription]
+    );
+    
+    res.json({ success: true, trackingId: trackingIdStr });
+  } catch (dbError) {
+    console.error("❌ Actual DB Error:", dbError.message);
+    res.status(500).json({ error: "Database save failed" });
+  }
+});
+
 
 // register stuff
 app.post("/api/register", (req, res) => {
@@ -188,25 +231,33 @@ function verifyPassword(password, stored) {
 }
 
 
-// AI Analysis Logic (EP02 Core)
+// AI Analysis Logic (EP02/EP03 Core) - Updated for Groq
 async function analyzeTicketWithAI(id, text) {
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+    const response = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile", // Powerful and fast free-tier model
       messages: [
-        { role: "system", content: "You are a support assistant. Summarize the user's issue into a short title and a category." },
+        { 
+          role: "system", 
+          content: "You are a support assistant. Summarize the user's issue into a short title and a 1-sentence summary." 
+        },
         { role: "user", content: text }
       ],
     });
 
     const analysis = response.choices[0].message.content;
 
-    // Update the record with AI results
-    const updateSql = 'UPDATE tickets SET ai_analysis = ?, status = "Analyzed" WHERE id = ?';
-    connection.query(updateSql, [analysis, id]);
-    console.log(`✨ AI Analysis complete for Ticket ${id}`);
+    // EP03-ST001: Update the record with status "Draft" so it shows up for Admin review
+    const updateSql = 'UPDATE tickets SET ai_analysis = ?, status = "Draft" WHERE id = ?';
+    
+    // Using await with db.execute is safer than connection.query if you're using the promise wrapper
+    await db.execute(updateSql, [analysis, id]); 
+    
+    console.log(`✨ Groq Analysis complete for Ticket ${id}`);
   } catch (error) {
-    console.error("⚠️ AI Analysis failed:", error.message);
+    console.error("⚠️ Groq Analysis failed:", error.message);
+    // Even if it fails, let's set it to Draft so the Admin can see the empty ticket
+    await db.execute('UPDATE tickets SET status = "Draft" WHERE id = ?', [id]);
   }
 }
 
@@ -251,16 +302,25 @@ app.get('/api/tickets/public/:tid', (req, res) => {
 // Admin Route: Update Ticket Status
 app.patch('/api/tickets/:id/status', async (req, res) => {
     const { id } = req.params;
-    const { status } = req.body; // e.g., "Solving" or "Solved"
+    const { status } = req.body;
 
     try {
+        // 1. First, get the ticket data so we have the user's email for T005
+        const [tickets] = await db.execute('SELECT user_email FROM tickets WHERE id = ?', [id]);
+        if (tickets.length === 0) return res.status(404).json({ message: "Ticket not found" });
+        
+        const userEmail = tickets[0].user_email;
+
+        // 2. Perform the update
         const [result] = await db.execute(
             'UPDATE tickets SET status = ? WHERE id = ?',
             [status, id]
         );
 
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ success: false, message: "Ticket not found" });
+        // 3. T005: Trigger the notification now that we know the update worked!
+        if (result.affectedRows > 0 && ['Solved', 'Failed', 'New'].includes(status)) {
+            // This ensures the email actually goes out to the right person
+            await sendNotificationEmail(userEmail, status, id); 
         }
 
         res.json({ success: true, message: `Status updated to ${status}` });
@@ -305,5 +365,31 @@ app.post("/api/google-login", async (req, res) => {
     });
   } catch (error) {
     res.status(400).json({ error: "Invalid Google Token" });
+  }
+});
+// EP03-ST001: Unified Admin Ticket Fetch
+app.get('/api/admin/tickets', async (req, res) => {
+  try {
+    // Adding LOWER() and including 'New' ensures nothing escapes the net
+    const [rows] = await db.execute(`
+      SELECT 
+        id, 
+        tracking_id, 
+        title, 
+        category, 
+        status, 
+        ai_analysis AS summary, 
+        original_message AS message,
+        created_at
+      FROM tickets 
+      WHERE LOWER(status) IN ('new', 'draft', 'analyzed', 'open')
+      ORDER BY created_at DESC
+    `);
+    
+    console.log(`✅ Admin fetched ${rows.length} tickets`); // Check Docker logs for this!
+    res.json(rows);
+  } catch (error) {
+    console.error("❌ Admin Fetch Error:", error.message);
+    res.status(500).json({ error: "Failed to load tickets" });
   }
 });
