@@ -25,42 +25,75 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY 
 }); // THIS DEFINES 'groq'
 
+// Ai and email receipt logic
 app.post('/api/tickets', async (req, res) => {
-  // 1. Destructure all possible names from the frontend
-  const { title, description, message, email } = req.body;
+  // 1. Destructure all possible fields from the frontend
+  const { title, description, message, email, category } = req.body;
 
   // 2. Pick the one that isn't empty (The "Whole Family" fallback)
   const finalDescription = description || message || "No content provided";
   const finalTitle = title || "New Support Request";
-  const finalEmail = email || "anonymous@ceivoice.com";
+  const finalEmail = email;
+  const finalCategory = category || "General";
   
+  if (!finalEmail || finalDescription === "No content provided") {
+    return res.status(400).json({ error: "Email and message are required." });
+  }
+
   const trackingIdStr = `TIC-${Date.now()}`;
   let aiSummary = "Summary pending...";
 
   try {
-    // Only call Groq if we actually have content to summarize
-    if (finalDescription !== "No content provided") {
-      const chatCompletion = await groq.chat.completions.create({
-        messages: [{ role: "user", content: `Summarize: ${finalDescription}` }],
-        model: "llama-3.3-70b-versatile",
-      });
-      aiSummary = chatCompletion.choices[0]?.message?.content || aiSummary;
+    // --- PART 1: AI ANALYSIS (Groq) ---
+    try {
+      if (finalDescription !== "No content provided") {
+        const chatCompletion = await groq.chat.completions.create({
+          messages: [{ role: "user", content: `Summarize: ${finalDescription}` }],
+          model: "llama-3.3-70b-versatile",
+        });
+        aiSummary = chatCompletion.choices[0]?.message?.content || aiSummary;
+        console.log("🤖 AI Analysis complete");
+      }
+    } catch (aiError) {
+      console.error("Groq Error:", aiError.message);
+      // We continue even if AI fails so the ticket still gets created
     }
-  } catch (error) {
-    console.error("Groq Error:", error.message);
-  }
 
-  try {
-    // 3. Use the "final" variables to ensure NO UNDEFINED values are passed
+    // --- PART 2: DATABASE SAVE (Promise-based) ---
     const [result] = await db.execute(
-      'INSERT INTO tickets (tracking_id, title, status, user_email, ai_analysis, original_message) VALUES (?, ?, ?, ?, ?, ?)',
-      [trackingIdStr, finalTitle, 'Draft', finalEmail, aiSummary, finalDescription]
+      'INSERT INTO tickets (tracking_id, title, category, status, user_email, ai_analysis, original_message) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [trackingIdStr, finalTitle, finalCategory, 'New', finalEmail, aiSummary, finalDescription]
     );
-    
-    res.json({ success: true, trackingId: trackingIdStr });
+    console.log("💾 Ticket saved to DB with ID:", result.insertId);
+
+    // --- PART 3: AUTOMATED EMAIL ---
+    try {
+      console.log("--- DEBUG EMAIL ---");
+      const sender = process.env.EMAIL_USER || process.env.GMAIL_USER;
+      const trackingUrl = `http://localhost:5173/track/${trackingIdStr}`;
+
+      await transporter.sendMail({
+        from: sender,
+        to: finalEmail,
+        subject: 'Request Received - CEiVoice',
+        text: `Hello! We received your message. \n\nTracking ID: ${trackingIdStr}\nTrack status here: ${trackingUrl}`
+      });
+      console.log("✅ EMAIL SENT SUCCESSFULLY");
+    } catch (mailError) {
+      console.error("❌ EMAIL LOGIC FAILED:", mailError.message);
+      // Still return success to user because ticket is in DB
+    }
+
+    // --- FINAL RESPONSE ---
+    return res.status(201).json({
+      success: true,
+      trackingId: trackingIdStr,
+      message: "Ticket created successfully."
+    });
+
   } catch (dbError) {
-    console.error("❌ Actual DB Error:", dbError.message);
-    res.status(500).json({ error: "Database save failed" });
+    console.error("❌ DATABASE ERROR:", dbError.message);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -157,54 +190,6 @@ app.post("/api/login", (req, res) => {
   });
 });
 
-app.post('/api/tickets', (req, res) => {
-  // 1. Destructure the extra fields from the frontend
-  const { email, message, title, category } = req.body; 
-
-  if (!email || !message) {
-    return res.status(400).json({ error: "Email and message are required." });
-  }
-
-  // 2. Generate the "Unique Link" string (e.g., TIC-174110)
-  const trackingIdStr = `TIC-${Date.now()}`; 
-
-  // 3. Update SQL to fill the new columns (tracking_id, title, category)
-  const sql = 'INSERT INTO tickets (tracking_id, user_email, title, category, original_message, status) VALUES (?, ?, ?, ?, ?, "New")';
-
-  connection.query(sql, [trackingIdStr, email, title || "Support Request", category || "General", message], async (err, result) => {
-    if (err) {
-      console.error("❌ DB Error:", err);
-      return res.status(500).json({ error: "Database failure" });
-    }
-
-    const dbId = result.insertId;
-
-    // Trigger AI using the numeric ID for internal lookups
-    analyzeTicketWithAI(dbId, message);
-
-    // 4. Update the email to send the tracking link
-    try {
-      const trackingUrl = `http://localhost:5173/track/${trackingIdStr}`;
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: email,
-        subject: 'Request Received - CEiVoice',
-        text: `Hello! We received your message. \n\nTracking ID: ${trackingIdStr}\nTrack status here: ${trackingUrl}`
-      });
-      console.log("📧 Email sent with tracking link");
-    } catch (mailError) {
-      console.error("❌ Email failed:", mailError.message);
-    }
-
-    // 5. Send the string back so the frontend can redirect correctly
-    res.status(201).json({
-      success: true,
-      trackingId: trackingIdStr, 
-      message: "Ticket created successfully."
-    });
-  });
-});
-
 // Login stuff
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -268,10 +253,24 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // 1. Create the transporter ONCE
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // Use STARTTLS
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
+  },
+  tls: {
+    rejectUnauthorized: false // Helps with Docker network quirks
+  }
+});
+
+// Verify connection configuration on startup
+transporter.verify(function (error, success) {
+  if (error) {
+    console.log("❌ Transporter connection error:", error);
+  } else {
+    console.log("✅ Server is ready to take our messages");
   }
 });
 
