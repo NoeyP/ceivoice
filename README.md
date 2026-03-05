@@ -49,6 +49,10 @@ EMAIL_USER=youremailhere
 EMAIL_PASS=codegeneratedfromgoogleaccount
 ```
 
+For the google login to work, you guys will need to do the following. 1. go to __https://console.cloud.google.com__ 2. go to credentials -> create credentials then name it whatever you want. then put this url in the field __http://localhost:5173__ 3. Create then copy the client id and then paste it in the .env file.
+```bash
+_CLIENT_ID = yourid
+```
 
 
 ### Access URLs
