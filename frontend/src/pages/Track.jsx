@@ -28,6 +28,7 @@ const mockTicket = (id) => ({
   ],
 });
 
+
 function formatDate(iso) {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -59,6 +60,8 @@ export default function Track() {
   const params = useParams();
   const [searchParams] = useSearchParams();
 
+  const [history, setHistory] = useState([]);
+
   const initialTid = params.trackingId || searchParams.get("tid") || "";
 
   const [inputTid, setInputTid] = useState(initialTid);
@@ -89,6 +92,10 @@ export default function Track() {
       if (!res.ok) throw new Error("Ticket not found or server error");
       const data = await res.json();
       setTicket(data);
+
+      const historyRes = await fetch(`http://localhost:3000/api/tickets/${data.id}/history`);
+      const historyData = await historyRes.json();
+      setHistory(historyData);
     } catch (e) {
       setErr(e?.message || "Failed to load ticket");
     } finally {
@@ -123,11 +130,10 @@ export default function Track() {
         return;
       }
 
-      // Change this line in submitComment:
-const res = await fetch(`http://localhost:3000/api/tickets/${encodeURIComponent(ticket.id)}/comments`, {
+      const res = await fetch(`http://localhost:3000/api/tickets/${encodeURIComponent(ticket.id)}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, visibility: "public" }),
+        body: JSON.stringify({ message: msg, visibility: "public", user_id: user?.id || null }),
       });
 
       if (!res.ok) throw new Error("Failed to add comment");
@@ -210,6 +216,29 @@ const res = await fetch(`http://localhost:3000/api/tickets/${encodeURIComponent(
       {ticket && !loading ? (
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: main */}
+          <div className="bg-white border rounded-2xl p-6 shadow-sm">
+            <h3 className="text-lg font-semibold mb-4">Ticket Journey (Audit Log)</h3>
+            <div className="space-y-4">
+              {history.length === 0 ? (
+                <p className="text-sm text-gray-500 italic">No history recorded yet.</p>
+              ) : (
+                history.map((h, index) => (
+                  <div key={index} className="flex gap-4 items-start">
+                    <div className="mt-1.5 w-2 h-2 rounded-full bg-slate-900 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">
+                        Status changed from <span className="text-slate-500 line-through">{h.old_status}</span> to <b>{h.new_status}</b>
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Updated by {h.changed_by_name} on {new Date(h.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           <div className="lg:col-span-2 space-y-6">
             {/* Overview */}
             <div className="bg-white border rounded-2xl p-6 shadow-sm">
@@ -258,6 +287,7 @@ const res = await fetch(`http://localhost:3000/api/tickets/${encodeURIComponent(
                   ))
                 )}
               </div>
+
 
               {/* Add comment */}
               <div className="mt-6">

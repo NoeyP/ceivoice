@@ -17,6 +17,33 @@ CREATE TABLE IF NOT EXISTS tickets (
     original_message TEXT,
     ai_analysis TEXT,
     status VARCHAR(50) DEFAULT 'New',
+    assignee_id INT,
+    deadline DATETIME,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+
+-- Create the Audit Log table (EP04-ST003)
+CREATE TABLE IF NOT EXISTS ticket_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ticket_id INT,
+    old_status VARCHAR(50),
+    new_status VARCHAR(50),
+    changed_by INT,
+    change_type VARCHAR(50), -- 'status' or 'assignment'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ticket_id) REFERENCES tickets(id)
+);
+
+
+CREATE TABLE IF NOT EXISTS ticket_comments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  ticket_id INT,
+  user_id INT,
+  message TEXT,
+  visibility ENUM('public', 'internal') DEFAULT 'public',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (ticket_id) REFERENCES tickets(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
 );
