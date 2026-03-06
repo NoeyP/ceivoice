@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users ( -- Login
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE tickets ( -- Ticket
+CREATE TABLE IF NOT EXISTS tickets ( -- Ticket
     id INT AUTO_INCREMENT PRIMARY KEY,
     tracking_id VARCHAR(50) UNIQUE,
     user_id INT,
@@ -19,6 +19,7 @@ CREATE TABLE tickets ( -- Ticket
     ai_analysis TEXT,
     suggested_resolution TEXT,
     status VARCHAR(50) DEFAULT 'New',
+    deadline DATETIME,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_tracking_id (tracking_id),
@@ -28,15 +29,31 @@ CREATE TABLE tickets ( -- Ticket
     FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE TABLE ticket_comments ( -- For commenting on the track page
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  ticket_id INT NOT NULL,
-  author VARCHAR(100),
-  comment TEXT NOT NULL,
-  visibility VARCHAR(20) DEFAULT 'public',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+-- Audit log for status/assignment changes (EP04)
+CREATE TABLE IF NOT EXISTS ticket_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ticket_id INT,
+    old_status VARCHAR(50),
+    new_status VARCHAR(50),
+    changed_by INT,
+    change_type VARCHAR(50), -- 'status' or 'assignment'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-  INDEX idx_ticket_id (ticket_id),
+    FOREIGN KEY (ticket_id) REFERENCES tickets(id),
+    FOREIGN KEY (changed_by) REFERENCES users(id)
+);
 
-  FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+-- Comments system
+CREATE TABLE IF NOT EXISTS ticket_comments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ticket_id INT NOT NULL,
+    user_id INT,
+    message TEXT NOT NULL,
+    visibility ENUM('public', 'internal') DEFAULT 'public',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    INDEX idx_ticket_id (ticket_id),
+
+    FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );

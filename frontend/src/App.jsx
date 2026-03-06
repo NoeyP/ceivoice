@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register.jsx";
 import Admin from "./pages/Admin.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
+import AssigneeDashboard from "./pages/AssigneeDashboard.jsx";
 
 export default function App() {
   const location = useLocation();
@@ -74,6 +75,13 @@ export default function App() {
                     className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
                   >
                     Track
+                  </Link>
+
+                  <Link
+                    to="/assignee"
+                    className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
+                  >
+                    Assignee Dashboard
                   </Link>
 
                   <Link
@@ -160,10 +168,10 @@ export default function App() {
             }
           />
 
-          <Route path="/track" element={<Track />} 
+          <Route path="/track" element={<Track />}
           />
-          
-          <Route path="/track/:trackingId" element={<Track />} 
+
+          <Route path="/track/:trackingId" element={<Track />}
           />
 
           <Route
@@ -180,6 +188,15 @@ export default function App() {
             element={
               <RequireAuth user={user}>
                 <Admin />
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/assignee"
+            element={
+              <RequireAuth user={user}>
+                <AssigneeDashboard />
               </RequireAuth>
             }
           />

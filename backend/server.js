@@ -10,6 +10,10 @@ app.use(express.json());
 const crypto = require("crypto");
 const { OAuth2Client } = require('google-auth-library');
 
+
+const VALID_STATUSES = ['New', 'Assigned', 'Solving', 'Solved', 'Failed', 'Renew'];
+
+
 // create connection
 const connection = mysql.createConnection({
   host: process.env.DB_HOST || 'db',
@@ -21,8 +25,8 @@ const connection = mysql.createConnection({
 const db = connection.promise();
 
 // Initialize AI(EP02-ST001)
-const groq = new Groq({ 
-  apiKey: process.env.GROQ_API_KEY 
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
 }); // THIS DEFINES 'groq'
 
 // Sending Email Function
@@ -293,9 +297,9 @@ async function analyzeTicketWithAI(id, text) {
     const response = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile", // Powerful and fast free-tier model
       messages: [
-        { 
-          role: "system", 
-          content: "You are a support assistant. Summarize the user's issue into a short title and a 1-sentence summary." 
+        {
+          role: "system",
+          content: "You are a support assistant. Summarize the user's issue into a short title and a 1-sentence summary."
         },
         { role: "user", content: text }
       ],
@@ -305,10 +309,10 @@ async function analyzeTicketWithAI(id, text) {
 
     // EP03-ST001: Update the record with status "Draft" so it shows up for Admin review
     const updateSql = 'UPDATE tickets SET ai_analysis = ?, status = "Draft" WHERE id = ?';
-    
+
     // Using await with db.execute is safer than connection.query if you're using the promise wrapper
-    await db.execute(updateSql, [analysis, id]); 
-    
+    await db.execute(updateSql, [analysis, id]);
+
     console.log(`✨ Groq Analysis complete for Ticket ${id}`);
   } catch (error) {
     console.error("⚠️ Groq Analysis failed:", error.message);
@@ -352,7 +356,7 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
 
   try {
 
-    // 1️⃣ Get ticket
+    // 1️ Get ticket
     const [tickets] = await db.execute(
       `SELECT 
         id,
@@ -373,7 +377,7 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
 
     const ticket = tickets[0];
 
-    // 2️⃣ Get public comments
+    // 2️ Get public comments
     const [comments] = await db.execute(
       `SELECT 
         id,
@@ -387,10 +391,10 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
       [ticket.id]
     );
 
-    // 3️⃣ Attach comments
+    // 3️ Attach comments
     ticket.publicComments = comments;
 
-    // 4️⃣ Send response
+    // 4️ Send response
     res.json(ticket);
 
   } catch (error) {
@@ -398,7 +402,6 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 // Admin Route: Update Ticket Status + Admin Edits
 app.patch('/api/tickets/:id/status', async (req, res) => {
@@ -409,12 +412,14 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
     title,
     ai_analysis,
     suggested_resolution,
-    category
+    category,
+    changed_by,
+    comment
   } = req.body;
 
   try {
 
-    // 1 Get current ticket info
+    // 1️ Get current ticket
     const [tickets] = await db.execute(
       'SELECT status, user_email, tracking_id FROM tickets WHERE id = ?',
       [id]
@@ -428,8 +433,8 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
     const userEmail = tickets[0].user_email;
     const trackingId = tickets[0].tracking_id;
 
-    // 2 Update ticket with admin edits
-    const [result] = await db.execute(
+    // 2️ Update ticket (admin edits + status)
+    await db.execute(
       `UPDATE tickets 
        SET status = ?, 
            title = ?, 
@@ -447,11 +452,24 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
       ]
     );
 
-    if (result.affectedRows === 0) {
-      return res.status(400).json({ success: false, message: "Update failed" });
+    // 3️ Log history (EP04 Audit Trail)
+    await db.execute(
+      `INSERT INTO ticket_history 
+       (ticket_id, old_status, new_status, changed_by, change_type)
+       VALUES (?, ?, ?, ?, 'status')`,
+      [id, oldStatus, status, changed_by || null]
+    );
+
+    // 4️ Save comment if provided
+    if (comment) {
+      await db.execute(
+        `INSERT INTO ticket_comments (ticket_id, user_id, message, visibility)
+         VALUES (?, ?, ?, 'public')`,
+        [id, changed_by || null, comment]
+      );
     }
 
-    // 3 Send email notification
+    // 5️ Send email notification (EP01-ST005)
     if (['Open', 'Solved', 'Failed'].includes(status)) {
       try {
         await sendNotificationEmail(userEmail, status, trackingId);
@@ -490,7 +508,7 @@ app.post("/api/google-login", async (req, res) => {
 
     // Check if user exists by google_sub OR email
     const findSql = "SELECT id, username, email FROM users WHERE google_sub = ? OR email = ? LIMIT 1";
-    
+
     connection.query(findSql, [sub, email], (err, rows) => {
       if (rows && rows.length > 0) {
         // User exists - Log them in
@@ -500,9 +518,9 @@ app.post("/api/google-login", async (req, res) => {
         const insertSql = "INSERT INTO users (username, email, google_sub, password_hash) VALUES (?, ?, ?, NULL)";
         connection.query(insertSql, [name, email, sub], (err, result) => {
           if (err) return res.status(500).json({ error: "Creation failed" });
-          res.status(201).json({ 
-            success: true, 
-            user: { id: result.insertId, username: name, email: email } 
+          res.status(201).json({
+            success: true,
+            user: { id: result.insertId, username: name, email: email }
           });
         });
       }
@@ -575,9 +593,11 @@ app.get('/api/admin/tickets', async (req, res) => {
       WHERE LOWER(status) IN ('new', 'draft', 'analyzed', 'open')
       ORDER BY created_at DESC
     `);
-    
+
+    console.log(`✅ Admin fetched ${rows.length} tickets`); // Check Docker logs for this!
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: "Failed to load tickets" });
   }
 });
+
