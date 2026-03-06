@@ -25,6 +25,39 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY 
 }); // THIS DEFINES 'groq'
 
+// Sending Email Function
+async function sendNotificationEmail(email, type, trackingId) {
+  try {
+
+    const mailOptions = {
+      from: `"CEI Support" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Update on your ticket ${trackingId}`,
+      text: `
+Hello,
+
+There is an update on your support request.
+
+Ticket ID: ${trackingId}
+Update: ${type}
+
+You can track your ticket here:
+http://localhost:5173/track/${trackingId}
+
+Best regards,
+CEI Support Team
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    console.log("📧 Notification email sent");
+
+  } catch (error) {
+    console.error("Email notification failed:", error.message);
+  }
+}
+
 // Ai and email receipt logic
 app.post('/api/tickets', async (req, res) => {
   // 1. Destructure all possible fields from the frontend
@@ -32,9 +65,9 @@ app.post('/api/tickets', async (req, res) => {
 
   // 2. Pick the one that isn't empty (The "Whole Family" fallback)
   const finalDescription = description || message || "No content provided";
-  const finalTitle = title || "New Support Request";
+  let finalTitle = title || "New Support Request";
   const finalEmail = email;
-  const finalCategory = category || "General";
+  let finalCategory = category || "General";
   
   if (!finalEmail || finalDescription === "No content provided") {
     return res.status(400).json({ error: "Email and message are required." });
@@ -42,29 +75,67 @@ app.post('/api/tickets', async (req, res) => {
 
   const trackingIdStr = `TIC-${Date.now()}`;
   let aiSummary = "Summary pending...";
+  let suggestedSolution = "No automated suggestion available.";
 
   try {
     // --- PART 1: AI ANALYSIS (Groq) ---
     try {
       if (finalDescription !== "No content provided") {
         const chatCompletion = await groq.chat.completions.create({
-          messages: [{ role: "user", content: `Summarize: ${finalDescription}` }],
+          messages: [{ 
+            role: "user", 
+            content: `Analyze this support request: "${finalDescription}". 
+                      Provide a JSON response with:
+                      1. "title": concise title (max 100 chars).
+                      2. "summary": structured summary (max 500 chars).
+                      Do NOT return JSON inside the summary.
+                      3. "category": ONE from: [Technical Support, Billing, Account Access, Feature Request, General Inquiry].
+                      4. "suggested_solution": Propose 1-3 actionable steps or resources to resolve this issue.` 
+          }],
           model: "llama-3.3-70b-versatile",
+          response_format: { type: "json_object" }
         });
-        aiSummary = chatCompletion.choices[0]?.message?.content || aiSummary;
-        console.log("🤖 AI Analysis complete");
+
+        const aiData = JSON.parse(chatCompletion.choices[0]?.message?.content);
+        aiSummary = aiData.summary || "No summary available";
+        finalTitle = aiData.title || finalTitle; 
+        finalCategory = aiData.category || finalCategory; 
+        
+        // 2. ASSIGN IT HERE (Make sure the name matches your DB call exactly)
+        if (Array.isArray(aiData.suggested_solution)) {
+          suggestedSolution = aiData.suggested_solution.join("\n");
+        } else {
+          suggestedSolution = aiData.suggested_solution || suggestedSolution;
+        }
+        
+        console.log(`🤖 AI Result: [${finalCategory}] ${finalTitle}`);
+        
+        aiSummary = aiData.summary || aiSummary;
+        finalTitle = aiData.title || finalTitle; 
+        // This clears ST003:
+        finalCategory = aiData.category || finalCategory; 
+        
+        console.log(`🤖 AI Result: [${finalCategory}] ${finalTitle}`);
       }
     } catch (aiError) {
       console.error("Groq Error:", aiError.message);
-      // We continue even if AI fails so the ticket still gets created
     }
 
     // --- PART 2: DATABASE SAVE (Promise-based) ---
     const [result] = await db.execute(
-      'INSERT INTO tickets (tracking_id, title, category, status, user_email, ai_analysis, original_message) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [trackingIdStr, finalTitle, finalCategory, 'New', finalEmail, aiSummary, finalDescription]
+      'INSERT INTO tickets (tracking_id, title, category, status, user_email, ai_analysis, original_message, suggested_resolution) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        trackingIdStr, 
+        finalTitle, 
+        finalCategory, 
+        'Draft',           // ✅ CHANGED: Now satisfies ST007 requirement
+        finalEmail, 
+        aiSummary, // Ensure this is a string for the DB
+        finalDescription, 
+        suggestedSolution  // AI's suggested steps from ST005
+      ]
     );
-    console.log("💾 Ticket saved to DB with ID:", result.insertId);
+    console.log("💾 Ticket saved as DRAFT with ID:", result.insertId);
 
     // --- PART 3: AUTOMATED EMAIL ---
     try {
@@ -274,59 +345,133 @@ transporter.verify(function (error, success) {
   }
 });
 
-// Tickets tracking system
-app.get('/api/tickets/public/:tid', (req, res) => {
-  const { tid } = req.params;
+// Tickets tracking system + Commenting
+app.get('/api/tickets/public/:trackingId', async (req, res) => {
 
-  // Use connection.query (not db.execute) to match the rest of your file
-  const sql = `
-    SELECT 
-      tracking_id AS trackingId, 
-      title, category, status, 
-      created_at AS createdAt, 
-      ai_analysis AS summary 
-    FROM tickets 
-    WHERE tracking_id = ? OR id = ?`;
+  const { trackingId } = req.params;
 
-  connection.query(sql, [tid, tid], (err, rows) => {
-    if (err) return res.status(500).json({ message: "DB Error" });
-    if (!rows || rows.length === 0) return res.status(404).json({ message: "Not found" });
+  try {
 
-    const ticket = rows[0];
-    ticket.publicComments = []; // Prevent frontend crash
+    // 1️⃣ Get ticket
+    const [tickets] = await db.execute(
+      `SELECT 
+        id,
+        tracking_id AS trackingId,
+        title,
+        category,
+        status,
+        ai_analysis,
+        created_at AS createdAt
+       FROM tickets
+       WHERE tracking_id = ?`,
+      [trackingId]
+    );
+
+    if (tickets.length === 0) {
+      return res.status(404).json({ message: "Ticket not found" });
+    }
+
+    const ticket = tickets[0];
+
+    // 2️⃣ Get public comments
+    const [comments] = await db.execute(
+      `SELECT 
+        id,
+        author,
+        comment AS message,
+        created_at AS createdAt
+       FROM ticket_comments
+       WHERE ticket_id = ? 
+       AND visibility = 'public'
+       ORDER BY created_at ASC`,
+      [ticket.id]
+    );
+
+    // 3️⃣ Attach comments
+    ticket.publicComments = comments;
+
+    // 4️⃣ Send response
     res.json(ticket);
-  });
+
+  } catch (error) {
+    console.error("Public ticket fetch error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-// Admin Route: Update Ticket Status
+
+// Admin Route: Update Ticket Status + Admin Edits
 app.patch('/api/tickets/:id/status', async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body;
+  const { id } = req.params;
 
-    try {
-        // 1. First, get the ticket data so we have the user's email for T005
-        const [tickets] = await db.execute('SELECT user_email FROM tickets WHERE id = ?', [id]);
-        if (tickets.length === 0) return res.status(404).json({ message: "Ticket not found" });
-        
-        const userEmail = tickets[0].user_email;
+  const {
+    status,
+    title,
+    ai_analysis,
+    suggested_resolution,
+    category
+  } = req.body;
 
-        // 2. Perform the update
-        const [result] = await db.execute(
-            'UPDATE tickets SET status = ? WHERE id = ?',
-            [status, id]
-        );
+  try {
 
-        // 3. T005: Trigger the notification now that we know the update worked!
-        if (result.affectedRows > 0 && ['Solved', 'Failed', 'New'].includes(status)) {
-            // This ensures the email actually goes out to the right person
-            await sendNotificationEmail(userEmail, status, id); 
-        }
+    // 1 Get current ticket info
+    const [tickets] = await db.execute(
+      'SELECT status, user_email, tracking_id FROM tickets WHERE id = ?',
+      [id]
+    );
 
-        res.json({ success: true, message: `Status updated to ${status}` });
-    } catch (error) {
-        console.error("Update error:", error);
-        res.status(500).json({ success: false, message: "Server error" });
+    if (tickets.length === 0) {
+      return res.status(404).json({ message: "Ticket not found" });
     }
+
+    const oldStatus = tickets[0].status;
+    const userEmail = tickets[0].user_email;
+    const trackingId = tickets[0].tracking_id;
+
+    // 2 Update ticket with admin edits
+    const [result] = await db.execute(
+      `UPDATE tickets 
+       SET status = ?, 
+           title = ?, 
+           ai_analysis = ?, 
+           suggested_resolution = ?, 
+           category = ?
+       WHERE id = ?`,
+      [
+        status,
+        title,
+        ai_analysis,
+        suggested_resolution,
+        category,
+        id
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(400).json({ success: false, message: "Update failed" });
+    }
+
+    // 3 Send email notification
+    if (['Open', 'Solved', 'Failed'].includes(status)) {
+      try {
+        await sendNotificationEmail(userEmail, status, trackingId);
+      } catch (mailError) {
+        console.error("Email notification failed:", mailError.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Ticket updated successfully (${oldStatus} → ${status})`
+    });
+
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
 });
 
 // Google Login/Registration
@@ -366,10 +511,55 @@ app.post("/api/google-login", async (req, res) => {
     res.status(400).json({ error: "Invalid Google Token" });
   }
 });
+
+// Commenting + Email receipt after an update on commenting
+app.post('/api/tickets/:id/comments', async (req, res) => {
+
+  const { id } = req.params;
+  const { message } = req.body;   // frontend sends message
+
+  try {
+
+    // 1️⃣ Save comment
+    const [result] = await db.execute(
+      `INSERT INTO ticket_comments (ticket_id, author, comment, visibility)
+       VALUES (?, ?, ?, 'public')`,
+      [id, "User", message]
+    );
+
+    // 2️⃣ Get ticket info
+    const [ticket] = await db.execute(
+      `SELECT user_email, tracking_id
+       FROM tickets
+       WHERE id = ?`,
+      [id]
+    );
+
+    if (ticket.length > 0) {
+      const userEmail = ticket[0].user_email;
+      const trackingId = ticket[0].tracking_id;
+
+      // 3️⃣ Send email notification
+      await sendNotificationEmail(userEmail, "New Comment", trackingId);
+    }
+
+    // 4️⃣ Return comment to frontend
+    res.json({
+      id: result.insertId,
+      author: "User",
+      message: message,
+      createdAt: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error("Comment error:", error);
+    res.status(500).json({ success: false });
+  }
+});
+
 // EP03-ST001: Unified Admin Ticket Fetch
 app.get('/api/admin/tickets', async (req, res) => {
   try {
-    // Adding LOWER() and including 'New' ensures nothing escapes the net
     const [rows] = await db.execute(`
       SELECT 
         id, 
@@ -377,18 +567,17 @@ app.get('/api/admin/tickets', async (req, res) => {
         title, 
         category, 
         status, 
-        ai_analysis AS summary, 
-        original_message AS message,
+        ai_analysis,           -- ✅ No alias, keeps the DB name
+        suggested_resolution,  -- ✅ ADDED THIS MISSING COLUMN
+        original_message,      -- ✅ Match your frontend variable
         created_at
       FROM tickets 
       WHERE LOWER(status) IN ('new', 'draft', 'analyzed', 'open')
       ORDER BY created_at DESC
     `);
     
-    console.log(`✅ Admin fetched ${rows.length} tickets`); // Check Docker logs for this!
     res.json(rows);
   } catch (error) {
-    console.error("❌ Admin Fetch Error:", error.message);
     res.status(500).json({ error: "Failed to load tickets" });
   }
 });

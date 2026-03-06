@@ -23,9 +23,11 @@ export default function Admin() {
             id: 1,
             tracking_id: "TIC-8888",
             title: "Sample Draft Ticket",
-            summary: "This is a test summary for EP03 review.",
+            ai_analysis: "This is a test summary for EP03 review.", // Changed from summary
+            suggested_resolution: "1. Check DB\n2. Verify API", // Added for ST005
             status: "Draft",
-            user_email: "test@example.com"
+            user_email: "test@example.com",
+            original_message: "The system is down!" // Added for context
           }]);
         }
       } catch (error) {
@@ -46,35 +48,45 @@ export default function Admin() {
   );
 
   const mergeEnabled = selectedIds.length >= 2;
+  const toggleSelectTicket = (e, ticketId) => {
+  e.stopPropagation(); // Prevents clicking the checkbox from opening the ticket detail
+  setSelectedIds(prev => 
+    prev.includes(ticketId) 
+      ? prev.filter(id => id !== ticketId) 
+      : [...prev, ticketId]
+  );
+};
   const handleUpdateTicket = async (newStatus) => {
-    if (!selectedTicket) return;
+  if (!selectedTicket) return;
 
-    try {
-      const response = await fetch(`http://localhost:3000/api/admin/tickets/${selectedTicket.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: selectedTicket.title,
-          summary: selectedTicket.summary,
-          status: newStatus, // This will be 'New' or 'Draft'
-          category: selectedTicket.category || 'General Inquiry'
-        }),
-      });
+  try {
+    const response = await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/status`, { 
+  method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: selectedTicket.title,
+        // ✅ TRAP FIXED: Use ai_analysis instead of summary
+        ai_analysis: selectedTicket.ai_analysis, 
+        // ✅ ST005: Save the internal action plan
+        suggested_resolution: selectedTicket.suggested_resolution, 
+        status: newStatus,
+        category: selectedTicket.category || 'General Inquiry'
+      }),
+    });
 
-      if (response.ok) {
-        // 1. Refresh the main list to show the change
-        const refreshRes = await fetch('http://localhost:3000/api/admin/tickets');
-        const updatedData = await refreshRes.json();
-        setTickets(updatedData);
-        
-        // 2. Clear selection or update local state
-        setSelectedTicket(null); 
-        alert(`Ticket successfully moved to ${newStatus}!`);
-      }
-    } catch (error) {
-      console.error("Update error:", error);
+    if (response.ok) {
+      // Refresh logic remains the same
+      const refreshRes = await fetch('http://localhost:3000/api/admin/tickets');
+      const updatedData = await refreshRes.json();
+      setTickets(updatedData);
+      
+      setSelectedTicket(null); 
+      alert(`Ticket successfully moved to ${newStatus}!`);
     }
-  };
+  } catch (error) {
+    console.error("Update error:", error);
+  }
+};
   
   return (
     <div className="min-h-screen bg-slate-50">
@@ -123,12 +135,25 @@ export default function Admin() {
                     <div 
                       key={ticket.id}
                       onClick={() => setSelectedTicket(ticket)}
-                      className={`p-3 rounded-lg border cursor-pointer transition ${
-                        selectedTicket?.id === ticket.id ? 'border-slate-900 bg-slate-50' : 'border-slate-200 hover:border-slate-400'
-                      }`}
+                      // Combined the logic into ONE className string
+                      className={`p-3 rounded-lg border cursor-pointer transition flex items-start gap-3 ${
+                        selectedIds.includes(ticket.id) 
+                          ? 'border-slate-400 bg-slate-100/50' 
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      } ${selectedTicket?.id === ticket.id ? 'ring-2 ring-slate-900' : ''}`}
                     >
-                      <p className="font-bold text-sm text-slate-900">{ticket.title}</p>
-                      <p className="text-xs text-slate-500">{ticket.tracking_id}</p>
+                      <input 
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer accent-slate-900"
+                        checked={selectedIds.includes(ticket.id)}
+                        onChange={(e) => toggleSelectTicket(e, ticket.id)}
+                        onClick={(e) => e.stopPropagation()} 
+                      />
+
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-slate-900">{ticket.title}</p>
+                        <p className="text-xs text-slate-500">{ticket.tracking_id}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -155,11 +180,17 @@ export default function Admin() {
             ) : (
               <div className="space-y-6">
                 <div className="flex justify-between items-center border-b pb-4">
-                  <h2 className="text-2xl font-bold text-slate-900">Review Ticket Details</h2>
-                  <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded">{selectedTicket.status.toUpperCase()}</span>
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900">Review Ticket</h2>
+                    <p className="text-sm text-slate-500">{selectedTicket.tracking_id}</p>
+                  </div>
+                  <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded">
+                    {selectedTicket.status?.toUpperCase()}
+                  </span>
                 </div>
 
                 <div className="space-y-4">
+                  {/* Title */}
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">AI-Suggested Title</label>
                     <input 
@@ -170,13 +201,27 @@ export default function Admin() {
                     />
                   </div>
 
+                  {/* Summary - Mapped to summary */}
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">AI-Generated Summary</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">AI-Generated Summary (Public)</label>
+                    <textarea 
+                      rows="3"
+                      className="w-full rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-slate-900 outline-none"
+                      value={selectedTicket.ai_analysis || ""}
+                      onChange={(e) => setSelectedTicket({...selectedTicket, ai_analysis: e.target.value})}
+                    />
+                  </div>
+
+                  {/* Action Plan - ST005 Requirement */}
+                  <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl">
+                    <label className="block text-sm font-bold text-indigo-700 mb-1 uppercase tracking-tight">
+                      AI Suggested Solution
+                    </label>
                     <textarea 
                       rows="4"
-                      className="w-full rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-slate-900 outline-none"
-                      value={selectedTicket.summary || ""}
-                      onChange={(e) => setSelectedTicket({...selectedTicket, summary: e.target.value})}
+                      className="w-full rounded-lg border border-indigo-200 p-2.5 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                      value={selectedTicket.suggested_resolution || ""}
+                      onChange={(e) => setSelectedTicket({...selectedTicket, suggested_resolution: e.target.value})}
                     />
                   </div>
 
@@ -185,38 +230,50 @@ export default function Admin() {
                       <label className="block text-sm font-semibold text-slate-700 mb-1">Category</label>
                       <select 
                         className="w-full rounded-lg border border-slate-300 p-2.5 bg-white outline-none"
-                        value={selectedTicket.category || "Technical Support"}
+                        value={selectedTicket.category || "General Inquiry"}
                         onChange={(e) => setSelectedTicket({...selectedTicket, category: e.target.value})}
                       >
                         <option>Technical Support</option>
                         <option>Billing/Finance</option>
+                        <option>Account Access</option>
+                        <option>Feature Request</option>
                         <option>General Inquiry</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Resolution Deadline</label>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">User Email (Reference)</label>
                       <input 
-                        type="datetime-local" 
-                        className="w-full rounded-lg border border-slate-300 p-2.5 outline-none" 
+                        type="text" 
+                        disabled
+                        className="w-full rounded-lg border border-slate-200 p-2.5 bg-slate-50 text-slate-500 cursor-not-allowed" 
+                        value={selectedTicket.user_email || ""}
                       />
                     </div>
                   </div>
-                </div>
 
-                <div className="flex gap-3 pt-6 border-t">
-                  <button 
-                    onClick={() => handleUpdateTicket('Draft')}
-                    className="flex-1 rounded-xl border border-slate-300 py-3 font-semibold text-slate-700 hover:bg-slate-50 transition"
-                  >
-                    Save as Draft
-                  </button>
-                  <button 
-                    onClick={() => handleUpdateTicket('New')}
-                    className="flex-1 rounded-xl bg-slate-900 py-3 font-semibold text-white hover:bg-slate-800 transition shadow-lg shadow-slate-200"
-                  >
-                    Submit as 'New'
-                  </button>
+                  {/* Original Message - Important for Admin Review */}
+                  <div className="mt-4 p-3 bg-slate-50 border rounded-lg">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Original User Message</p>
+                    <p className="text-sm text-slate-600 italic">"{selectedTicket.original_message || "No content"}"</p>
+                  </div>
+                  {/* ACTION BUTTONS */}
+                  <div className="flex gap-4 pt-4 border-t">
+                    <button
+                      // ✅ FIX: Added the click handler to save edits but keep it as a Draft
+                      onClick={() => handleUpdateTicket('Draft')}
+                      className="flex-1 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                    >
+                      Keep as Draft
+                    </button>
+                    <button
+                      // ✅ FIX: Added the click handler to flip status to 'Approved/Open'
+                      onClick={() => handleUpdateTicket('Open')}
+                      className="flex-[2] rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 transition shadow-lg"
+                    >
+                      Approve & Open
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
