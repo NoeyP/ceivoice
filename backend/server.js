@@ -381,13 +381,12 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
     const [comments] = await db.execute(
       `SELECT 
         id,
-        author,
-        comment AS message,
+        message,
         created_at AS createdAt
-       FROM ticket_comments
-       WHERE ticket_id = ? 
-       AND visibility = 'public'
-       ORDER BY created_at ASC`,
+      FROM ticket_comments
+      WHERE ticket_id = ? 
+      AND visibility = 'public'
+      ORDER BY created_at ASC`,
       [ticket.id]
     );
 
@@ -492,6 +491,33 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
   }
 });
 
+// EP03-ST001: Unified Admin Ticket Fetch
+app.get('/api/admin/tickets', async (req, res) => {
+  try {
+    const [rows] = await db.execute(`
+      SELECT 
+        id,
+        tracking_id,
+        title,
+        category,
+        status,
+        ai_analysis,
+        suggested_resolution,
+        original_message,
+        created_at
+      FROM tickets
+      ORDER BY created_at DESC
+    `);
+
+    console.log(`✅ Admin fetched ${rows.length} tickets`);
+    res.json(rows);
+
+  } catch (error) {
+    console.error("Admin ticket fetch error:", error);
+    res.status(500).json({ error: "Failed to load tickets" });
+  }
+});
+
 // Google Login/Registration
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -534,18 +560,18 @@ app.post("/api/google-login", async (req, res) => {
 app.post('/api/tickets/:id/comments', async (req, res) => {
 
   const { id } = req.params;
-  const { message } = req.body;   // frontend sends message
+  const { message } = req.body;
 
   try {
 
-    // 1️⃣ Save comment
+    // 1️ Save comment
     const [result] = await db.execute(
-      `INSERT INTO ticket_comments (ticket_id, author, comment, visibility)
+      `INSERT INTO ticket_comments (ticket_id, user_id, message, visibility)
        VALUES (?, ?, ?, 'public')`,
-      [id, "User", message]
+      [id, null, message]   // public user comment
     );
 
-    // 2️⃣ Get ticket info
+    // 2️ Get ticket info
     const [ticket] = await db.execute(
       `SELECT user_email, tracking_id
        FROM tickets
@@ -557,14 +583,13 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
       const userEmail = ticket[0].user_email;
       const trackingId = ticket[0].tracking_id;
 
-      // 3️⃣ Send email notification
+      // 3️ Send email notification
       await sendNotificationEmail(userEmail, "New Comment", trackingId);
     }
 
-    // 4️⃣ Return comment to frontend
+    // 4️ Return comment to frontend
     res.json({
       id: result.insertId,
-      author: "User",
       message: message,
       createdAt: new Date().toISOString()
     });
@@ -574,30 +599,3 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
     res.status(500).json({ success: false });
   }
 });
-
-// EP03-ST001: Unified Admin Ticket Fetch
-app.get('/api/admin/tickets', async (req, res) => {
-  try {
-    const [rows] = await db.execute(`
-      SELECT 
-        id, 
-        tracking_id, 
-        title, 
-        category, 
-        status, 
-        ai_analysis,           -- ✅ No alias, keeps the DB name
-        suggested_resolution,  -- ✅ ADDED THIS MISSING COLUMN
-        original_message,      -- ✅ Match your frontend variable
-        created_at
-      FROM tickets 
-      WHERE LOWER(status) IN ('new', 'draft', 'analyzed', 'open')
-      ORDER BY created_at DESC
-    `);
-
-    console.log(`✅ Admin fetched ${rows.length} tickets`); // Check Docker logs for this!
-    res.json(rows);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to load tickets" });
-  }
-});
-
