@@ -63,12 +63,12 @@ export default function Submit() {
             Email <span className="text-red-500">*</span>
           </label>
           <input
-            readOnly
             type="email"
-            value={email} // YOUR LOGIC
-            onChange={(e) => setEmail(e.target.value)} // YOUR LOGIC
+            required // Ensure browser validation works
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="Enter your email..."
-            className="w-full border rounded-lg px-3 py-2 bg-slate-100"
+            className="w-full border rounded-lg px-3 py-2" // Removed bg-slate-100
           />
         </div>
 

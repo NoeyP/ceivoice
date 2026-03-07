@@ -321,11 +321,6 @@ async function analyzeTicketWithAI(id, text) {
   }
 }
 
-const PORT = 3000; // Backend Checker
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Backend listening on port ${PORT}`);
-});
-
 // 1. Create the transporter ONCE
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -491,22 +486,25 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
   }
 });
 
-// EP03-ST001: Unified Admin Ticket Fetch
+// EP03-ST001: Admin TIcket Fetch
 app.get('/api/admin/tickets', async (req, res) => {
   try {
     const [rows] = await db.execute(`
       SELECT 
-        id,
-        tracking_id,
-        title,
-        category,
-        status,
-        ai_analysis,
-        suggested_resolution,
-        original_message,
-        created_at
-      FROM tickets
-      ORDER BY created_at DESC
+        t.id,
+        t.tracking_id,
+        t.title,
+        t.category,
+        t.status,
+        t.ai_analysis,
+        t.suggested_resolution,
+        t.original_message,
+        t.assignee_id,
+        u.username AS assignee_name,
+        t.created_at
+      FROM tickets t
+      LEFT JOIN users u ON t.assignee_id = u.id
+      ORDER BY t.created_at DESC
     `);
 
     console.log(`✅ Admin fetched ${rows.length} tickets`);
@@ -517,6 +515,73 @@ app.get('/api/admin/tickets', async (req, res) => {
     res.status(500).json({ error: "Failed to load tickets" });
   }
 });
+
+// Assign Ticket API
+app.patch('/api/tickets/:id/assign', async (req, res) => {
+
+  const { id } = req.params;
+  const { assignee_id, changed_by } = req.body;
+
+  try {
+
+    // 1️ Check ticket exists
+    const [tickets] = await db.execute(
+      'SELECT assignee_id FROM tickets WHERE id = ?',
+      [id]
+    );
+
+    if (tickets.length === 0) {
+      return res.status(404).json({ message: "Ticket not found" });
+    }
+
+    const oldAssignee = tickets[0].assignee_id;
+
+    // 2️ Update assignee
+    await db.execute(
+      `UPDATE tickets 
+       SET assignee_id = ?, status = 'Assigned'
+       WHERE id = ?`,
+      [assignee_id, id]
+    );
+
+    // 3️ Save history log
+    await db.execute(
+      `INSERT INTO ticket_history 
+       (ticket_id, changed_by, change_type)
+       VALUES (?, ?, 'assignment')`,
+      [id, changed_by || null]
+    );
+
+    res.json({
+      success: true,
+      message: "Ticket assigned successfully"
+    });
+
+  } catch (error) {
+    console.error("Assignment error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Fetch all users for ticket assignment
+app.get('/api/users', async (req, res) => {
+  try {
+
+    const [rows] = await db.execute(`
+      SELECT id, username
+      FROM users
+      ORDER BY username ASC
+    `);
+
+    res.json(rows);
+
+  } catch (error) {
+    console.error("Fetch users error:", error);
+    res.status(500).json({ error: "Failed to load users" });
+  }
+});
+
+
 
 // Google Login/Registration
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -598,4 +663,9 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
     console.error("Comment error:", error);
     res.status(500).json({ success: false });
   }
+});
+
+const PORT = 3000; // Backend Checker !!! Always has to be at the last line of the file !!!
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Backend listening on port ${PORT}`);
 });
