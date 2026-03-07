@@ -12,6 +12,9 @@ const { OAuth2Client } = require('google-auth-library');
 
 
 const VALID_STATUSES = ['New', 'Assigned', 'Solving', 'Solved', 'Failed', 'Renew'];
+const STAFF_ROLES = new Set(['assignee', 'admin']);
+const ALL_COMMENT_ROLES = new Set(['user', 'creator', 'follower', 'assignee', 'admin']);
+let hasParentCommentIdColumnCache = null;
 
 
 // create connection
@@ -23,6 +26,29 @@ const connection = mysql.createConnection({
   database: 'ceivoice'
 });
 const db = connection.promise();
+
+async function hasParentCommentIdColumn() {
+  if (hasParentCommentIdColumnCache !== null) {
+    return hasParentCommentIdColumnCache;
+  }
+
+  try {
+    const [rows] = await db.execute(
+      `SELECT 1
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'ticket_comments'
+       AND COLUMN_NAME = 'parent_comment_id'
+       LIMIT 1`
+    );
+    hasParentCommentIdColumnCache = rows.length > 0;
+  } catch (error) {
+    console.error("Schema check failed for ticket_comments.parent_comment_id:", error.message);
+    hasParentCommentIdColumnCache = false;
+  }
+
+  return hasParentCommentIdColumnCache;
+}
 
 // Initialize AI(EP02-ST001)
 const groq = new Groq({
@@ -378,9 +404,15 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
     const ticket = tickets[0];
 
     // 2️ Get public comments
+    const supportsReplies = await hasParentCommentIdColumn();
+    const parentColumnSelect = supportsReplies
+      ? "c.parent_comment_id AS parentId,"
+      : "NULL AS parentId,";
+
     const [comments] = await db.execute(
       `SELECT 
         c.id,
+        ${parentColumnSelect}
         c.message,
         c.visibility,
         c.created_at AS createdAt,
@@ -416,9 +448,15 @@ app.get('/api/tickets/:id/comments', async (req, res) => {
       ? `c.visibility IN ('public', 'internal')`
       : `c.visibility = 'public'`;
 
+    const supportsReplies = await hasParentCommentIdColumn();
+    const parentColumnSelect = supportsReplies
+      ? "c.parent_comment_id AS parentId,"
+      : "NULL AS parentId,";
+
     const [rows] = await db.execute(
       `SELECT
         c.id,
+        ${parentColumnSelect}
         c.ticket_id AS ticketId,
         c.message,
         c.visibility,
@@ -699,26 +737,72 @@ app.post("/api/google-login", async (req, res) => {
 app.post('/api/tickets/:id/comments', async (req, res) => {
 
   const { id } = req.params;
-  const { message, visibility = 'public', user_id = null } = req.body;
+  const {
+    message,
+    visibility = 'public',
+    user_id = null,
+    actor_role = 'user',
+    parent_id = null
+  } = req.body;
   const normalizedVisibility = String(visibility || 'public').toLowerCase();
+  const normalizedRole = String(actor_role || 'user').toLowerCase();
   const cleanMessage = String(message || "").trim();
+  const parentId = parent_id ? Number(parent_id) : null;
 
   if (!cleanMessage) {
     return res.status(400).json({ message: "Comment message is required" });
+  }
+
+  if (!ALL_COMMENT_ROLES.has(normalizedRole)) {
+    return res.status(400).json({ message: "Invalid actor role" });
+  }
+
+  if (!Number.isInteger(parentId) && parentId !== null) {
+    return res.status(400).json({ message: "Invalid parent comment id" });
   }
 
   if (!['public', 'internal'].includes(normalizedVisibility)) {
     return res.status(400).json({ message: "Invalid visibility value" });
   }
 
+  if (!STAFF_ROLES.has(normalizedRole) && normalizedVisibility !== 'public') {
+    return res.status(403).json({ message: "Only staff can post internal comments" });
+  }
+
   try {
+    const supportsReplies = await hasParentCommentIdColumn();
+
+    if (parentId !== null && !supportsReplies) {
+      return res.status(400).json({ message: "Reply comments require database migration" });
+    }
+
+    if (parentId !== null) {
+      const [parentRows] = await db.execute(
+        `SELECT id FROM ticket_comments WHERE id = ? AND ticket_id = ? LIMIT 1`,
+        [parentId, id]
+      );
+      if (parentRows.length === 0) {
+        return res.status(400).json({ message: "Reply target not found for this ticket" });
+      }
+    }
 
     // 1️ Save comment
-    const [result] = await db.execute(
-      `INSERT INTO ticket_comments (ticket_id, user_id, message, visibility)
-       VALUES (?, ?, ?, ?)`,
-      [id, user_id || null, cleanMessage, normalizedVisibility]
-    );
+    let result;
+    if (supportsReplies) {
+      const [insertResult] = await db.execute(
+        `INSERT INTO ticket_comments (ticket_id, user_id, parent_comment_id, message, visibility)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, user_id || null, parentId, cleanMessage, normalizedVisibility]
+      );
+      result = insertResult;
+    } else {
+      const [insertResult] = await db.execute(
+        `INSERT INTO ticket_comments (ticket_id, user_id, message, visibility)
+         VALUES (?, ?, ?, ?)`,
+        [id, user_id || null, cleanMessage, normalizedVisibility]
+      );
+      result = insertResult;
+    }
 
     // 2️ Get ticket info
     const [ticket] = await db.execute(
@@ -748,6 +832,7 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
 
     res.json({
       id: result.insertId,
+      parentId,
       message: cleanMessage,
       visibility: normalizedVisibility,
       author,

@@ -1,5 +1,25 @@
 import { useState, useEffect, useMemo } from "react";
 
+function buildCommentTree(comments = []) {
+  const keyOf = (value) => (value === null || value === undefined ? null : String(value));
+  const nodes = new Map();
+  comments.forEach((c) => {
+    nodes.set(keyOf(c.id), { ...c, replies: [] });
+  });
+
+  const roots = [];
+  nodes.forEach((node) => {
+    const parentKey = keyOf(node.parentId);
+    if (parentKey && nodes.has(parentKey)) {
+      nodes.get(parentKey).replies.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  return roots;
+}
+
 export default function AssigneeDashboard() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,6 +31,12 @@ export default function AssigneeDashboard() {
 
   const [history, setHistory] = useState([]);
   const [comments, setComments] = useState([]);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentVisibility, setCommentVisibility] = useState("public");
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replyVisibility, setReplyVisibility] = useState("public");
+  const [replyTargetId, setReplyTargetId] = useState(null);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
 
 
   const [selectedAssignees, setSelectedAssignees] = useState([]);
@@ -62,6 +88,51 @@ export default function AssigneeDashboard() {
     const commentData = await commentsRes.json();
     setHistory(historyData);
     setComments(commentData);
+    setCommentDraft("");
+    setCommentVisibility("public");
+    setReplyDraft("");
+    setReplyVisibility("public");
+    setReplyTargetId(null);
+  };
+
+  const submitComment = async (rawMessage, parentId = null, visibility = "public") => {
+    if (!selectedTicket) return;
+    const message = String(rawMessage || "").trim();
+    if (!message) return;
+
+    setCommentSubmitting(true);
+    try {
+      const res = await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          visibility,
+          user_id: user?.id || null,
+          actor_role: "assignee",
+          parent_id: parentId,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to post comment");
+      }
+
+      const newComment = await res.json();
+      setComments((prev) => [...prev, newComment]);
+      if (parentId) {
+        setReplyDraft("");
+        setReplyVisibility("public");
+        setReplyTargetId(null);
+      } else {
+        setCommentDraft("");
+      }
+    } catch (err) {
+      alert(err.message || "Failed to post comment");
+    } finally {
+      setCommentSubmitting(false);
+    }
   };
 
   const submitStatusUpdate = async () => {
@@ -124,6 +195,100 @@ export default function AssigneeDashboard() {
   const sortedTickets = useMemo(() => {
     return [...tickets].sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
   }, [tickets]);
+  const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
+
+  const renderCommentNode = (node, depth = 0) => {
+    const INDENT = 20;
+    const badgeCls = node.visibility === "internal"
+      ? "border-amber-200 bg-amber-100 text-amber-800"
+      : "border-blue-200 bg-blue-50 text-blue-700";
+
+    return (
+      <div
+        key={node.id}
+        className="relative space-y-2"
+        style={{ marginLeft: depth > 0 ? `${depth * INDENT}px` : "0px" }}
+      >
+        {depth > 0 ? (
+          <>
+            <div className="absolute left-0 top-0 bottom-0 w-px bg-slate-300" />
+            <div className="absolute left-0 top-5 h-px w-3 bg-slate-300" />
+          </>
+        ) : null}
+
+        <div className="ml-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 relative">
+              <span className="text-xs font-semibold text-slate-800">{node.author || "Unknown"}</span>
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${badgeCls}`}>
+                {node.visibility}
+              </span>
+              <span className="text-[10px] font-semibold text-slate-500">{new Date(node.createdAt).toLocaleString()}</span>
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{node.message}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setReplyTargetId(node.id);
+              setReplyDraft("");
+              setReplyVisibility(commentVisibility);
+            }}
+            className="mt-2 text-sm font-semibold text-blue-600 hover:underline"
+          >
+            Reply
+          </button>
+
+          {String(replyTargetId) === String(node.id) ? (
+            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+              <div className="mb-2 flex items-center justify-between text-xs text-blue-800">
+                <span>Replying to {node.author || "User"}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplyTargetId(null);
+                    setReplyDraft("");
+                    setReplyVisibility("public");
+                  }}
+                  className="font-semibold hover:underline"
+                >
+                  Cancel
+                </button>
+              </div>
+              <div className="mb-2">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Visibility</label>
+                <select
+                  value={replyVisibility}
+                  onChange={(e) => setReplyVisibility(e.target.value)}
+                  className="w-full border rounded-lg p-2 text-sm bg-white"
+                >
+                  <option value="public">Public</option>
+                  <option value="internal">Internal</option>
+                </select>
+              </div>
+              <textarea
+                className="w-full border rounded-lg p-2.5 h-24 bg-white"
+                placeholder={`Reply to ${node.author || "User"}...`}
+                value={replyDraft}
+                onChange={(e) => setReplyDraft(e.target.value)}
+              />
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => submitComment(replyDraft, node.id, replyVisibility)}
+                  disabled={commentSubmitting || !replyDraft.trim()}
+                  className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+                >
+                  {commentSubmitting ? "Posting..." : "Post Reply"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {node.replies.map((child) => renderCommentNode(child, depth + 1))}
+      </div>
+    );
+  };
 
   if (loading) return <div className="p-10">Loading your workload...</div>;
 
@@ -227,27 +392,47 @@ export default function AssigneeDashboard() {
                   {comments.length === 0 ? (
                     <p className="text-xs text-slate-500 italic">No comments yet.</p>
                   ) : (
-                    <ul className="space-y-3">
-                      {comments.map((c) => (
-                        <li key={c.id} className="rounded-lg border bg-white p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold text-slate-800">{c.author || "Unknown"}</span>
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${c.visibility === "internal"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-blue-100 text-blue-800"
-                                }`}>
-                                {c.visibility}
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-slate-400">{new Date(c.createdAt).toLocaleString()}</span>
-                          </div>
-                          <p className="mt-2 text-xs text-slate-700 whitespace-pre-wrap">{c.message}</p>
-                        </li>
+                    <div>
+                      {commentTree.map((node) => (
+                        <div key={`root-${node.id}`} className="pb-10 mb-6 border-b border-slate-200 last:pb-0 last:mb-0 last:border-b-0">
+                          {renderCommentNode(node)}
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   )}
                 </div>
+
+                {!replyTargetId ? (
+                  <div className="mb-6 border rounded-lg p-4 bg-white">
+                  <h4 className="text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider">Add Comment</h4>
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Visibility</label>
+                    <select
+                      value={commentVisibility}
+                      onChange={(e) => setCommentVisibility(e.target.value)}
+                      className="w-full border rounded-lg p-2 text-sm bg-slate-50"
+                    >
+                      <option value="public">Public</option>
+                      <option value="internal">Internal</option>
+                    </select>
+                  </div>
+                  <textarea
+                    className="w-full border rounded-lg p-2.5 h-24"
+                    placeholder="Write a comment or reply..."
+                    value={commentDraft}
+                    onChange={(e) => setCommentDraft(e.target.value)}
+                  />
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      onClick={() => submitComment(commentDraft, null, commentVisibility)}
+                      disabled={commentSubmitting || !commentDraft.trim()}
+                      className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+                    >
+                      {commentSubmitting ? "Posting..." : "Post Comment"}
+                    </button>
+                  </div>
+                  </div>
+                ) : null}
 
                 {/* Status Dropdown (EP04-ST002) */}
                 <div>

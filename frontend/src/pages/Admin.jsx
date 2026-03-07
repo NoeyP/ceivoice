@@ -2,12 +2,36 @@ import { useMemo, useState, useEffect } from "react";
 
 const FILTERS = ["Draft", "New", "All"];
 
+function buildCommentTree(comments = []) {
+  const nodes = new Map();
+  comments.forEach((c) => {
+    nodes.set(c.id, { ...c, replies: [] });
+  });
+
+  const roots = [];
+  nodes.forEach((node) => {
+    if (node.parentId && nodes.has(node.parentId)) {
+      nodes.get(node.parentId).replies.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  return roots;
+}
+
 export default function Admin() {
   // CHANGED: Added setTickets so we can actually update the list
   const [tickets, setTickets] = useState([]); 
   const [selectedIds, setSelectedIds] = useState([]);
   const [activeFilter, setActiveFilter] = useState("Draft");
   const [selectedTicket, setSelectedTicket] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentVisibility, setCommentVisibility] = useState("public");
+  const [replyTargetId, setReplyTargetId] = useState(null);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
 
   // EP03-ST001: Fetch real tickets from the backend
   useEffect(() => {
@@ -48,6 +72,7 @@ export default function Admin() {
   );
 
   const mergeEnabled = selectedIds.length >= 2;
+  const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
   const toggleSelectTicket = (e, ticketId) => {
   e.stopPropagation(); // Prevents clicking the checkbox from opening the ticket detail
   setSelectedIds(prev => 
@@ -56,6 +81,92 @@ export default function Admin() {
       : [...prev, ticketId]
   );
 };
+  const openTicket = async (ticket) => {
+    setSelectedTicket(ticket);
+    setCommentDraft("");
+    setCommentVisibility("public");
+    setReplyTargetId(null);
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/tickets/${ticket.id}/comments?scope=staff`);
+      if (res.ok) {
+        const data = await res.json();
+        setComments(data);
+      } else {
+        setComments([]);
+      }
+    } catch (error) {
+      console.error("Comment load error:", error);
+      setComments([]);
+    }
+  };
+
+  const submitComment = async () => {
+    if (!selectedTicket) return;
+    const message = commentDraft.trim();
+    if (!message) return;
+
+    setCommentSubmitting(true);
+    try {
+      const res = await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          visibility: commentVisibility,
+          user_id: user?.id || null,
+          actor_role: "admin",
+          parent_id: replyTargetId,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to post comment");
+      }
+
+      const newComment = await res.json();
+      setComments((prev) => [...prev, newComment]);
+      setCommentDraft("");
+      setReplyTargetId(null);
+    } catch (error) {
+      alert(error.message || "Failed to post comment");
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
+
+  const renderCommentNode = (node, depth = 0) => (
+    <div key={node.id} className="space-y-2">
+      <div
+        className="rounded-lg border bg-white p-3"
+        style={{ marginLeft: depth > 0 ? `${Math.min(depth * 24, 72)}px` : "0px" }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-800">{node.author || "Unknown"}</span>
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${node.visibility === "internal"
+              ? "bg-amber-100 text-amber-800"
+              : "bg-blue-100 text-blue-800"
+              }`}>
+              {node.visibility}
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-400">{new Date(node.createdAt).toLocaleString()}</span>
+        </div>
+        <p className="mt-2 text-xs text-slate-700 whitespace-pre-wrap">{node.message}</p>
+        <button
+          type="button"
+          onClick={() => setReplyTargetId(node.id)}
+          className="mt-2 text-xs font-semibold text-blue-600 hover:underline"
+        >
+          Reply
+        </button>
+      </div>
+      {node.replies.map((child) => renderCommentNode(child, depth + 1))}
+    </div>
+  );
+
   const handleUpdateTicket = async (newStatus) => {
   if (!selectedTicket) return;
 
@@ -134,7 +245,7 @@ export default function Admin() {
                   {filteredTickets.map((ticket) => (
                     <div 
                       key={ticket.id}
-                      onClick={() => setSelectedTicket(ticket)}
+                      onClick={() => openTicket(ticket)}
                       // Combined the logic into ONE className string
                       className={`p-3 rounded-lg border cursor-pointer transition flex items-start gap-3 ${
                         selectedIds.includes(ticket.id) 
@@ -273,6 +384,59 @@ export default function Admin() {
                     >
                       Approve & Open
                     </button>
+                  </div>
+
+                  <div className="mt-6 border rounded-xl p-4 bg-slate-50">
+                    <h3 className="text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider">Comment Thread</h3>
+                    {comments.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic">No comments yet.</p>
+                    ) : (
+                      <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                        {commentTree.map((node) => renderCommentNode(node))}
+                      </div>
+                    )}
+
+                    <div className="mt-4 border rounded-lg p-3 bg-white">
+                      {replyTargetId ? (
+                        <div className="mb-2 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                          <span>Replying to comment #{replyTargetId}</span>
+                          <button
+                            type="button"
+                            onClick={() => setReplyTargetId(null)}
+                            className="font-semibold hover:underline"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : null}
+                      <div className="mb-2">
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Visibility</label>
+                        <select
+                          value={commentVisibility}
+                          onChange={(e) => setCommentVisibility(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 p-2 text-sm bg-slate-50"
+                        >
+                          <option value="public">Public</option>
+                          <option value="internal">Internal</option>
+                        </select>
+                      </div>
+                      <textarea
+                        rows="3"
+                        className="w-full rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-slate-900 outline-none"
+                        placeholder="Write a comment or reply..."
+                        value={commentDraft}
+                        onChange={(e) => setCommentDraft(e.target.value)}
+                      />
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          onClick={submitComment}
+                          disabled={commentSubmitting || !commentDraft.trim()}
+                          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                          {commentSubmitting ? "Posting..." : "Post Comment"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

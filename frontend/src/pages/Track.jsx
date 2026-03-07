@@ -36,6 +36,26 @@ function formatDate(iso) {
   return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
 }
 
+function buildCommentTree(comments = []) {
+  const keyOf = (value) => (value === null || value === undefined ? null : String(value));
+  const nodes = new Map();
+  comments.forEach((c) => {
+    nodes.set(keyOf(c.id), { ...c, replies: [] });
+  });
+
+  const roots = [];
+  nodes.forEach((node) => {
+    const parentKey = keyOf(node.parentId);
+    if (parentKey && nodes.has(parentKey)) {
+      nodes.get(parentKey).replies.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  return roots;
+}
+
 function StatusBadge({ status }) {
   const { label, cls } = useMemo(() => {
     const s = (status || "").toLowerCase();
@@ -73,8 +93,11 @@ export default function Track() {
   const [err, setErr] = useState("");
 
   const [comment, setComment] = useState("");
+  const [replyComment, setReplyComment] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
+  const [replyTarget, setReplyTarget] = useState(null);
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
+  const commentTree = useMemo(() => buildCommentTree(ticket?.comments || []), [ticket?.comments]);
 
   async function fetchTicket(tid) {
     if (!tid) return;
@@ -108,9 +131,9 @@ export default function Track() {
     }
   }
 
-  async function submitComment() {
+  async function submitComment(message, parentId = null) {
     if (!ticket) return;
-    const msg = comment.trim();
+    const msg = message.trim();
     if (!msg) return;
 
     setCommentBusy(true);
@@ -128,18 +151,30 @@ export default function Track() {
               author: "User",
               message: msg,
               visibility: "public",
+              parentId,
               createdAt: new Date().toISOString(),
             },
           ],
         }));
-        setComment("");
+        if (parentId) {
+          setReplyComment("");
+          setReplyTarget(null);
+        } else {
+          setComment("");
+        }
         return;
       }
 
       const res = await fetch(`http://localhost:3000/api/tickets/${encodeURIComponent(ticket.id)}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, visibility: "public", user_id: user?.id || null }),
+        body: JSON.stringify({
+          message: msg,
+          visibility: "public",
+          user_id: user?.id || null,
+          actor_role: "user",
+          parent_id: parentId,
+        }),
       });
 
       if (!res.ok) throw new Error("Failed to add comment");
@@ -149,12 +184,94 @@ export default function Track() {
         ...prev,
         comments: [...(prev?.comments || []), newComment],
       }));
-      setComment("");
+      if (parentId) {
+        setReplyComment("");
+        setReplyTarget(null);
+      } else {
+        setComment("");
+      }
     } catch (e) {
       setErr(e?.message || "Failed to submit comment");
     } finally {
       setCommentBusy(false);
     }
+  }
+
+  function renderCommentNode(node, depth = 0) {
+    const INDENT = 20;
+    return (
+      <div
+        key={node.id}
+        className="relative space-y-2"
+        style={{ marginLeft: depth > 0 ? `${depth * INDENT}px` : "0px" }}
+      >
+        {depth > 0 ? (
+          <>
+            <div className="absolute left-0 top-0 bottom-0 w-px bg-slate-300" />
+            <div className="absolute left-0 top-5 h-px w-3 bg-slate-300" />
+          </>
+        ) : null}
+
+        <div className="ml-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 relative">
+              <p className="font-medium">{node.author || "Unknown"}</p>
+              <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                Public
+              </span>
+              <p className="text-xs font-semibold text-gray-500">{formatDate(node.createdAt)}</p>
+            </div>
+          </div>
+          <p className="text-gray-700 mt-2 whitespace-pre-wrap">{node.message}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setReplyTarget({ id: node.id, author: node.author || "User" });
+              setReplyComment("");
+            }}
+            className="mt-2 text-sm font-medium text-blue-600 hover:underline"
+          >
+            Reply
+          </button>
+
+          {replyTarget?.id === node.id ? (
+            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+              <div className="mb-2 flex items-center justify-between text-sm text-blue-800">
+                <span>Replying to {replyTarget.author}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplyTarget(null);
+                    setReplyComment("");
+                  }}
+                  className="font-semibold hover:underline"
+                >
+                  Cancel reply
+                </button>
+              </div>
+              <textarea
+                value={replyComment}
+                onChange={(e) => setReplyComment(e.target.value)}
+                rows={3}
+                placeholder={`Reply to ${replyTarget.author}...`}
+                className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-200 bg-white"
+              />
+              <div className="mt-2 flex justify-end">
+                <button
+                  onClick={() => submitComment(replyComment, node.id)}
+                  disabled={commentBusy || !replyComment.trim()}
+                  className="px-4 py-2 rounded-lg bg-gray-900 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-black transition"
+                >
+                  {commentBusy ? "Posting..." : "Post Reply"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {node.replies.map((child) => renderCommentNode(child, depth + 1))}
+      </div>
+    );
   }
 
   useEffect(() => {
@@ -301,22 +418,13 @@ export default function Track() {
           <div className="mt-6 bg-white border rounded-2xl p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Comment Thread</h3>
 
-            <div className="space-y-4">
+            <div>
               {(ticket.comments || []).length === 0 ? (
                 <p className="text-gray-600">No public comments yet.</p>
               ) : (
-                ticket.comments.map((c) => (
-                  <div key={c.id} className="border rounded-2xl p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">{c.author || "Unknown"}</p>
-                        <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
-                          Public
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500">{formatDate(c.createdAt)}</p>
-                    </div>
-                    <p className="text-gray-700 mt-2 whitespace-pre-wrap">{c.message}</p>
+                commentTree.map((node) => (
+                  <div key={`root-${node.id}`} className="pb-10 mb-6 border-b border-slate-200 last:pb-0 last:mb-0 last:border-b-0">
+                    {renderCommentNode(node)}
                   </div>
                 ))
               )}
@@ -335,7 +443,7 @@ export default function Track() {
               />
               <div className="flex justify-end mt-3">
                 <button
-                  onClick={submitComment}
+                  onClick={() => submitComment(comment)}
                   disabled={commentBusy || !comment.trim()}
                   className="px-5 py-3 rounded-xl bg-gray-900 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-black transition"
                 >
@@ -343,6 +451,7 @@ export default function Track() {
                 </button>
               </div>
             </div>
+
           </div>
         </>
       ) : null}

@@ -46,14 +46,17 @@ CREATE TABLE IF NOT EXISTS ticket_comments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     ticket_id INT NOT NULL,
     user_id INT,
+    parent_comment_id INT NULL,
     message TEXT NOT NULL,
     visibility ENUM('public', 'internal') DEFAULT 'public',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_ticket_id (ticket_id),
+    INDEX idx_parent_comment_id (parent_comment_id),
 
     FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (parent_comment_id) REFERENCES ticket_comments(id) ON DELETE CASCADE
 );
 
 
