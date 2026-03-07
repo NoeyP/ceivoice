@@ -72,7 +72,7 @@ app.post('/api/tickets', async (req, res) => {
   let finalTitle = title || "New Support Request";
   const finalEmail = email;
   let finalCategory = category || "General";
-  
+
   if (!finalEmail || finalDescription === "No content provided") {
     return res.status(400).json({ error: "Email and message are required." });
   }
@@ -86,15 +86,15 @@ app.post('/api/tickets', async (req, res) => {
     try {
       if (finalDescription !== "No content provided") {
         const chatCompletion = await groq.chat.completions.create({
-          messages: [{ 
-            role: "user", 
+          messages: [{
+            role: "user",
             content: `Analyze this support request: "${finalDescription}". 
                       Provide a JSON response with:
                       1. "title": concise title (max 100 chars).
                       2. "summary": structured summary (max 500 chars).
                       Do NOT return JSON inside the summary.
                       3. "category": ONE from: [Technical Support, Billing, Account Access, Feature Request, General Inquiry].
-                      4. "suggested_solution": Propose 1-3 actionable steps or resources to resolve this issue.` 
+                      4. "suggested_solution": Propose 1-3 actionable steps or resources to resolve this issue.`
           }],
           model: "llama-3.3-70b-versatile",
           response_format: { type: "json_object" }
@@ -102,23 +102,23 @@ app.post('/api/tickets', async (req, res) => {
 
         const aiData = JSON.parse(chatCompletion.choices[0]?.message?.content);
         aiSummary = aiData.summary || "No summary available";
-        finalTitle = aiData.title || finalTitle; 
-        finalCategory = aiData.category || finalCategory; 
-        
+        finalTitle = aiData.title || finalTitle;
+        finalCategory = aiData.category || finalCategory;
+
         // 2. ASSIGN IT HERE (Make sure the name matches your DB call exactly)
         if (Array.isArray(aiData.suggested_solution)) {
           suggestedSolution = aiData.suggested_solution.join("\n");
         } else {
           suggestedSolution = aiData.suggested_solution || suggestedSolution;
         }
-        
+
         console.log(`🤖 AI Result: [${finalCategory}] ${finalTitle}`);
-        
+
         aiSummary = aiData.summary || aiSummary;
-        finalTitle = aiData.title || finalTitle; 
+        finalTitle = aiData.title || finalTitle;
         // This clears ST003:
-        finalCategory = aiData.category || finalCategory; 
-        
+        finalCategory = aiData.category || finalCategory;
+
         console.log(`🤖 AI Result: [${finalCategory}] ${finalTitle}`);
       }
     } catch (aiError) {
@@ -129,13 +129,13 @@ app.post('/api/tickets', async (req, res) => {
     const [result] = await db.execute(
       'INSERT INTO tickets (tracking_id, title, category, status, user_email, ai_analysis, original_message, suggested_resolution) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [
-        trackingIdStr, 
-        finalTitle, 
-        finalCategory, 
+        trackingIdStr,
+        finalTitle,
+        finalCategory,
         'Draft',           // ✅ CHANGED: Now satisfies ST007 requirement
-        finalEmail, 
+        finalEmail,
         aiSummary, // Ensure this is a string for the DB
-        finalDescription, 
+        finalDescription,
         suggestedSolution  // AI's suggested steps from ST005
       ]
     );
@@ -375,17 +375,21 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
     // 2️ Get public comments
     const [comments] = await db.execute(
       `SELECT 
-        id,
-        message,
-        created_at AS createdAt
-      FROM ticket_comments
-      WHERE ticket_id = ? 
-      AND visibility = 'public'
-      ORDER BY created_at ASC`,
+        c.id,
+        c.message,
+        c.visibility,
+        c.created_at AS createdAt,
+        COALESCE(u.username, 'User') AS author
+      FROM ticket_comments c
+      LEFT JOIN users u ON c.user_id = u.id
+      WHERE c.ticket_id = ? 
+      AND c.visibility = 'public'
+      ORDER BY c.created_at ASC`,
       [ticket.id]
     );
 
     // 3️ Attach comments
+    ticket.comments = comments;
     ticket.publicComments = comments;
 
     // 4️ Send response
@@ -394,6 +398,39 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
   } catch (error) {
     console.error("Public ticket fetch error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.get('/api/tickets/:id/comments', async (req, res) => {
+  const { id } = req.params;
+  const { scope } = req.query;
+  const isStaffScope = scope === 'staff';
+
+  try {
+    const whereVisibility = isStaffScope
+      ? `c.visibility IN ('public', 'internal')`
+      : `c.visibility = 'public'`;
+
+    const [rows] = await db.execute(
+      `SELECT
+        c.id,
+        c.ticket_id AS ticketId,
+        c.message,
+        c.visibility,
+        c.created_at AS createdAt,
+        COALESCE(u.username, 'User') AS author
+      FROM ticket_comments c
+      LEFT JOIN users u ON c.user_id = u.id
+      WHERE c.ticket_id = ?
+      AND ${whereVisibility}
+      ORDER BY c.created_at ASC`,
+      [id]
+    );
+
+    res.json(rows);
+  } catch (error) {
+    console.error("Ticket comment fetch error:", error);
+    res.status(500).json({ message: "Failed to fetch comments" });
   }
 });
 
@@ -446,6 +483,13 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
       ]
     );
 
+    let deadlineUpdate = "";
+    if (oldStatus === 'Draft' && status === 'Open') {
+      const threeDaysFromNow = new Date();
+      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+      await db.execute('UPDATE tickets SET deadline = ? WHERE id = ?', [threeDaysFromNow, id]);
+    }
+
     // 3️ Log history (EP04 Audit Trail)
     await db.execute(
       `INSERT INTO ticket_history 
@@ -486,9 +530,10 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
   }
 });
 
-// EP03-ST001: Admin TIcket Fetch
+// Admin Ticket Fetch
 app.get('/api/admin/tickets', async (req, res) => {
   try {
+
     const [rows] = await db.execute(`
       SELECT 
         t.id,
@@ -499,11 +544,12 @@ app.get('/api/admin/tickets', async (req, res) => {
         t.ai_analysis,
         t.suggested_resolution,
         t.original_message,
-        t.assignee_id,
-        u.username AS assignee_name,
+        GROUP_CONCAT(u.username) AS assignee_name,
         t.created_at
       FROM tickets t
-      LEFT JOIN users u ON t.assignee_id = u.id
+      LEFT JOIN ticket_assignees ta ON t.id = ta.ticket_id
+      LEFT JOIN users u ON ta.user_id = u.id
+      GROUP BY t.id
       ORDER BY t.created_at DESC
     `);
 
@@ -516,54 +562,7 @@ app.get('/api/admin/tickets', async (req, res) => {
   }
 });
 
-// Assign Ticket API
-app.patch('/api/tickets/:id/assign', async (req, res) => {
-
-  const { id } = req.params;
-  const { assignee_id, changed_by } = req.body;
-
-  try {
-
-    // 1️ Check ticket exists
-    const [tickets] = await db.execute(
-      'SELECT assignee_id FROM tickets WHERE id = ?',
-      [id]
-    );
-
-    if (tickets.length === 0) {
-      return res.status(404).json({ message: "Ticket not found" });
-    }
-
-    const oldAssignee = tickets[0].assignee_id;
-
-    // 2️ Update assignee
-    await db.execute(
-      `UPDATE tickets 
-       SET assignee_id = ?, status = 'Assigned'
-       WHERE id = ?`,
-      [assignee_id, id]
-    );
-
-    // 3️ Save history log
-    await db.execute(
-      `INSERT INTO ticket_history 
-       (ticket_id, changed_by, change_type)
-       VALUES (?, ?, 'assignment')`,
-      [id, changed_by || null]
-    );
-
-    res.json({
-      success: true,
-      message: "Ticket assigned successfully"
-    });
-
-  } catch (error) {
-    console.error("Assignment error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Fetch all users for ticket assignment
+// Fetch users 
 app.get('/api/users', async (req, res) => {
   try {
 
@@ -582,6 +581,143 @@ app.get('/api/users', async (req, res) => {
 });
 
 
+// ------------------------------
+// EP04 FEATURES
+// ------------------------------
+
+// Staff workload
+app.get('/api/assignee/:userId/tickets', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+
+    const [rows] = await db.execute(`
+      SELECT
+        t.id,
+        t.tracking_id,
+        t.title,
+        t.status,
+        t.deadline,
+        t.category,
+        t.ai_analysis,
+        t.suggested_resolution
+      FROM tickets t
+      JOIN ticket_assignees ta ON t.id = ta.ticket_id
+      WHERE ta.user_id = ?
+      AND t.status NOT IN ('Solved', 'Failed')
+      ORDER BY t.deadline ASC`,
+      [userId]
+    );
+
+    res.json(rows);
+
+  } catch (error) {
+    console.error("Workload fetch error:", error);
+    res.status(500).json({ error: "Failed to load workload" });
+  }
+});
+
+
+// Ticket history
+app.get('/api/tickets/:id/history', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+
+    const [rows] = await db.execute(`
+      SELECT h.*, u.username as changed_by_name 
+      FROM ticket_history h
+      LEFT JOIN users u ON h.changed_by = u.id
+      WHERE h.ticket_id = ?
+      ORDER BY h.created_at DESC`,
+      [id]
+    );
+
+    res.json(rows);
+
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch history" });
+  }
+});
+
+
+// Reassign ticket
+app.patch('/api/tickets/:id/reassign', async (req, res) => {
+
+  const { id } = req.params;
+  const { new_assignee_ids, changed_by } = req.body;
+
+  try {
+
+    const [oldAssignees] = await db.execute(`
+      SELECT u.username FROM users u
+      JOIN ticket_assignees ta ON u.id = ta.user_id
+      WHERE ta.ticket_id = ?`,
+      [id]
+    );
+
+    const oldNames = oldAssignees.length > 0
+      ? oldAssignees.map(a => a.username).join(", ")
+      : "None";
+
+    await db.execute('DELETE FROM ticket_assignees WHERE ticket_id = ?', [id]);
+
+    let newNames = "None";
+
+    if (new_assignee_ids && new_assignee_ids.length > 0) {
+
+      const values = new_assignee_ids.map((uid) => [id, uid]);
+
+      await db.execute(
+        'INSERT INTO ticket_assignees (ticket_id, user_id) VALUES ?',
+        [values]
+      );
+
+      const [newRows] = await db.execute(
+        'SELECT username FROM users WHERE id IN (?)',
+        [new_assignee_ids]
+      );
+
+      newNames = newRows.map(u => u.username).join(", ");
+
+      await db.execute(
+        'UPDATE tickets SET status = "Assigned" WHERE id = ?',
+        [id]
+      );
+    }
+
+    const historyMessage = `Reassigned from [${oldNames}] to [${newNames}]`;
+
+    await db.execute(
+      `INSERT INTO ticket_history 
+       (ticket_id, changed_by, change_type, old_status, new_status) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, changed_by, 'assignment', 'Assigned', historyMessage]
+    );
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error("Reassignment failed:", error);
+    res.status(500).json({ error: "Reassignment failed" });
+  }
+});
+
+
+// Staff list
+app.get('/api/staff', async (req, res) => {
+  try {
+
+    const [rows] = await db.execute(
+      'SELECT id, username FROM users'
+    );
+
+    res.json(rows);
+
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch staff" });
+  }
+});
 
 // Google Login/Registration
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -625,15 +761,25 @@ app.post("/api/google-login", async (req, res) => {
 app.post('/api/tickets/:id/comments', async (req, res) => {
 
   const { id } = req.params;
-  const { message } = req.body;
+  const { message, visibility = 'public', user_id = null } = req.body;
+  const normalizedVisibility = String(visibility || 'public').toLowerCase();
+  const cleanMessage = String(message || "").trim();
+
+  if (!cleanMessage) {
+    return res.status(400).json({ message: "Comment message is required" });
+  }
+
+  if (!['public', 'internal'].includes(normalizedVisibility)) {
+    return res.status(400).json({ message: "Invalid visibility value" });
+  }
 
   try {
 
     // 1️ Save comment
     const [result] = await db.execute(
       `INSERT INTO ticket_comments (ticket_id, user_id, message, visibility)
-       VALUES (?, ?, ?, 'public')`,
-      [id, null, message]   // public user comment
+       VALUES (?, ?, ?, ?)`,
+      [id, user_id || null, cleanMessage, normalizedVisibility]
     );
 
     // 2️ Get ticket info
@@ -653,9 +799,20 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
     }
 
     // 4️ Return comment to frontend
+    let author = "User";
+    if (user_id) {
+      const [users] = await db.execute(
+        `SELECT username FROM users WHERE id = ? LIMIT 1`,
+        [user_id]
+      );
+      author = users.length > 0 ? users[0].username : "Staff";
+    }
+
     res.json({
       id: result.insertId,
-      message: message,
+      message: cleanMessage,
+      visibility: normalizedVisibility,
+      author,
       createdAt: new Date().toISOString()
     });
 

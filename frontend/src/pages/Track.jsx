@@ -12,27 +12,28 @@ const mockTicket = (id) => ({
   createdAt: "2026-02-15T08:30:00Z",
   deadline: "2026-02-18T12:00:00Z",
   summary: "User reports HR portal access issue after password reset.",
-  publicComments: [
+  comments: [
     {
       id: "c1",
       author: "Support Team",
-      message: "Thanks—our team is checking your account access now.",
+      message: "Thanks, our team is checking your account access now.",
+      visibility: "public",
       createdAt: "2026-02-15T09:05:00Z",
     },
     {
       id: "c2",
       author: "User",
-      message: "I can’t login on mobile either.",
+      message: "I can't login on mobile either.",
+      visibility: "public",
       createdAt: "2026-02-15T09:20:00Z",
     },
   ],
 });
 
-
 function formatDate(iso) {
   if (!iso) return "-";
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? "-" : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
 }
 
 function StatusBadge({ status }) {
@@ -73,6 +74,7 @@ export default function Track() {
 
   const [comment, setComment] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
+  const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
 
   async function fetchTicket(tid) {
     if (!tid) return;
@@ -91,7 +93,10 @@ export default function Track() {
       const res = await fetch(`http://localhost:3000/api/tickets/public/${encodeURIComponent(tid)}`);
       if (!res.ok) throw new Error("Ticket not found or server error");
       const data = await res.json();
-      setTicket(data);
+      setTicket({
+        ...data,
+        comments: data.comments || data.publicComments || [],
+      });
 
       const historyRes = await fetch(`http://localhost:3000/api/tickets/${data.id}/history`);
       const historyData = await historyRes.json();
@@ -116,12 +121,13 @@ export default function Track() {
         await new Promise((r) => setTimeout(r, 400));
         setTicket((prev) => ({
           ...prev,
-          publicComments: [
-            ...(prev?.publicComments || []),
+          comments: [
+            ...(prev?.comments || []),
             {
               id: `c-${Date.now()}`,
               author: "User",
               message: msg,
+              visibility: "public",
               createdAt: new Date().toISOString(),
             },
           ],
@@ -141,7 +147,7 @@ export default function Track() {
 
       setTicket((prev) => ({
         ...prev,
-        publicComments: [...(prev?.publicComments || []), newComment],
+        comments: [...(prev?.comments || []), newComment],
       }));
       setComment("");
     } catch (e) {
@@ -174,13 +180,12 @@ export default function Track() {
         </p>
       </div>
 
-      {/* Search */}
       <div className="bg-white border rounded-2xl p-4 md:p-6 shadow-sm">
         <div className="flex flex-col md:flex-row gap-3">
           <input
             value={inputTid}
             onChange={(e) => setInputTid(e.target.value)}
-            placeholder="e.g. TCK-2026-000123"
+            placeholder="e.g. TIC-2026-000123"
             className="w-full md:flex-1 border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-200"
           />
           <button
@@ -198,10 +203,9 @@ export default function Track() {
         ) : null}
       </div>
 
-      {/* States */}
       {loading ? (
         <div className="mt-6 bg-white border rounded-2xl p-6">
-          <p className="text-gray-600">Loading ticket…</p>
+          <p className="text-gray-600">Loading ticket...</p>
         </div>
       ) : null}
 
@@ -212,135 +216,135 @@ export default function Track() {
         </div>
       ) : null}
 
-      {/* Ticket */}
       {ticket && !loading ? (
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: main */}
-          <div className="bg-white border rounded-2xl p-6 shadow-sm">
-            <h3 className="text-lg font-semibold mb-4">Ticket Journey (Audit Log)</h3>
-            <div className="space-y-4">
-              {history.length === 0 ? (
-                <p className="text-sm text-gray-500 italic">No history recorded yet.</p>
-              ) : (
-                history.map((h, index) => (
-                  <div key={index} className="flex gap-4 items-start">
-                    <div className="mt-1.5 w-2 h-2 rounded-full bg-slate-900 shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">
-                        Status changed from <span className="text-slate-500 line-through">{h.old_status}</span> to <b>{h.new_status}</b>
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Updated by {h.changed_by_name} on {new Date(h.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="lg:col-span-2 space-y-6">
-            {/* Overview */}
+        <>
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-white border rounded-2xl p-6 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold">{ticket.title || "Untitled Ticket"}</h2>
-                  <p className="text-gray-600 mt-1">
-                    Category: <span className="font-medium text-gray-800">{ticket.category || "-"}</span>
-                  </p>
-                </div>
-                <StatusBadge status={ticket.status} />
-              </div>
-
-              {ticket.summary ? (
-                <p className="text-gray-700 mt-4 leading-relaxed">{ticket.summary}</p>
-              ) : null}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
-                <div className="bg-gray-50 border rounded-xl p-4">
-                  <p className="text-xs text-gray-500">Created</p>
-                  <p className="font-medium mt-1">{formatDate(ticket.createdAt)}</p>
-                </div>
-                <div className="bg-gray-50 border rounded-xl p-4">
-                  <p className="text-xs text-gray-500">Deadline</p>
-                  <p className="font-medium mt-1">{formatDate(ticket.deadline)}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Comments */}
-            <div className="bg-white border rounded-2xl p-6 shadow-sm">
-              <h3 className="text-lg font-semibold mb-4">Public Updates</h3>
-
+              <h3 className="text-lg font-semibold mb-4">Ticket Journey (Audit Log)</h3>
               <div className="space-y-4">
-                {(ticket.publicComments || []).length === 0 ? (
-                  <p className="text-gray-600">No public comments yet.</p>
+                {history.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">No history recorded yet.</p>
                 ) : (
-                  ticket.publicComments.map((c) => (
-                    <div key={c.id} className="border rounded-2xl p-4">
-                      <div className="flex items-center justify-between gap-4">
-                        <p className="font-medium">{c.author || "Unknown"}</p>
-                        <p className="text-xs text-gray-500">{formatDate(c.createdAt)}</p>
+                  history.map((h, index) => (
+                    <div key={index} className="flex gap-4 items-start">
+                      <div className="mt-1.5 w-2 h-2 rounded-full bg-slate-900 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">
+                          Status changed from <span className="text-slate-500 line-through">{h.old_status}</span> to <b>{h.new_status}</b>
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Updated by {h.changed_by_name} on {new Date(h.created_at).toLocaleString()}
+                        </p>
                       </div>
-                      <p className="text-gray-700 mt-2 whitespace-pre-wrap">{c.message}</p>
                     </div>
                   ))
                 )}
               </div>
+            </div>
 
-
-              {/* Add comment */}
-              <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Add a public comment
-                </label>
-                <textarea
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  rows={4}
-                  placeholder="Type your message…"
-                  className="w-full border rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-200"
-                />
-                <div className="flex justify-end mt-3">
-                  <button
-                    onClick={submitComment}
-                    disabled={commentBusy || !comment.trim()}
-                    className="px-5 py-3 rounded-xl bg-gray-900 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-black transition"
-                  >
-                    {commentBusy ? "Posting…" : "Post Comment"}
-                  </button>
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white border rounded-2xl p-6 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold">{ticket.title || "Untitled Ticket"}</h2>
+                    <p className="text-gray-600 mt-1">
+                      Category: <span className="font-medium text-gray-800">{ticket.category || "-"}</span>
+                    </p>
+                  </div>
+                  <StatusBadge status={ticket.status} />
                 </div>
+
+                {ticket.summary ? (
+                  <p className="text-gray-700 mt-4 leading-relaxed">{ticket.summary}</p>
+                ) : null}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+                  <div className="bg-gray-50 border rounded-xl p-4">
+                    <p className="text-xs text-gray-500">Created</p>
+                    <p className="font-medium mt-1">{formatDate(ticket.createdAt)}</p>
+                  </div>
+                  <div className="bg-gray-50 border rounded-xl p-4">
+                    <p className="text-xs text-gray-500">Deadline</p>
+                    <p className="font-medium mt-1">{formatDate(ticket.deadline)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-white border rounded-2xl p-6 shadow-sm">
+                <h3 className="font-semibold">Tracking Info</h3>
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-500">Tracking ID</span>
+                    <span className="font-medium">{ticket.trackingId || ticket.id}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-500">Status</span>
+                    <span className="font-medium">{ticket.status || "Unknown"}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-4">
+                  Note: Internal staff notes are hidden from public tracking.
+                </p>
+              </div>
+
+              <div className="bg-gray-900 text-white rounded-2xl p-6">
+                <h3 className="font-semibold">Need faster help?</h3>
+                <p className="text-white/80 mt-2 text-sm">
+                  Add details (device, screenshots, steps) in a public comment to speed up resolution.
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Right: quick info */}
-          <div className="space-y-6">
-            <div className="bg-white border rounded-2xl p-6 shadow-sm">
-              <h3 className="font-semibold">Tracking Info</h3>
-              <div className="mt-3 space-y-2 text-sm">
-                <div className="flex justify-between gap-4">
-                  <span className="text-gray-500">Tracking ID</span>
-                  <span className="font-medium">{ticket.trackingId || ticket.id}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-gray-500">Status</span>
-                  <span className="font-medium">{ticket.status || "Unknown"}</span>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-4">
-                Note: Internal staff notes are hidden from public tracking.
-              </p>
+          <div className="mt-6 bg-white border rounded-2xl p-6 shadow-sm">
+            <h3 className="text-lg font-semibold mb-4">Comment Thread</h3>
+
+            <div className="space-y-4">
+              {(ticket.comments || []).length === 0 ? (
+                <p className="text-gray-600">No public comments yet.</p>
+              ) : (
+                ticket.comments.map((c) => (
+                  <div key={c.id} className="border rounded-2xl p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{c.author || "Unknown"}</p>
+                        <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                          Public
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500">{formatDate(c.createdAt)}</p>
+                    </div>
+                    <p className="text-gray-700 mt-2 whitespace-pre-wrap">{c.message}</p>
+                  </div>
+                ))
+              )}
             </div>
 
-            <div className="bg-gray-900 text-white rounded-2xl p-6">
-              <h3 className="font-semibold">Need faster help?</h3>
-              <p className="text-white/80 mt-2 text-sm">
-                Add details (device, screenshots, steps) in a public comment to speed up resolution.
-              </p>
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Add a public comment
+              </label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                rows={4}
+                placeholder="Type your message..."
+                className="w-full border rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-200"
+              />
+              <div className="flex justify-end mt-3">
+                <button
+                  onClick={submitComment}
+                  disabled={commentBusy || !comment.trim()}
+                  className="px-5 py-3 rounded-xl bg-gray-900 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-black transition"
+                >
+                  {commentBusy ? "Posting..." : "Post Comment"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );

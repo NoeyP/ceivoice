@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS tickets ( -- Ticket
     id INT AUTO_INCREMENT PRIMARY KEY,
     tracking_id VARCHAR(50) UNIQUE,
     user_id INT,
-    assignee_id INT,
     user_email VARCHAR(255),
     title VARCHAR(255),
     category VARCHAR(100),
@@ -25,21 +24,20 @@ CREATE TABLE IF NOT EXISTS tickets ( -- Ticket
     INDEX idx_tracking_id (tracking_id),
     INDEX idx_status (status),
 
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- Audit log for status/assignment changes (EP04)
 CREATE TABLE IF NOT EXISTS ticket_history (
     id INT AUTO_INCREMENT PRIMARY KEY,
     ticket_id INT,
-    old_status VARCHAR(50),
-    new_status VARCHAR(50),
-    changed_by INT,
+    old_status TEXT,
+    new_status TEXT,
+    changed_by INT NULL,
     change_type VARCHAR(50), -- 'status' or 'assignment'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (ticket_id) REFERENCES tickets(id),
+    FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
     FOREIGN KEY (changed_by) REFERENCES users(id)
 );
 
@@ -56,4 +54,13 @@ CREATE TABLE IF NOT EXISTS ticket_comments (
 
     FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+
+CREATE TABLE IF NOT EXISTS ticket_assignees (
+    ticket_id INT NOT NULL,
+    user_id INT NOT NULL,
+    PRIMARY KEY (ticket_id, user_id),
+    FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
