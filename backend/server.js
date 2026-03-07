@@ -347,11 +347,6 @@ async function analyzeTicketWithAI(id, text) {
   }
 }
 
-const PORT = 3000; // Backend Checker
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Backend listening on port ${PORT}`);
-});
-
 // 1. Create the transporter ONCE
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -573,22 +568,27 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
   }
 });
 
-// EP03-ST001: Unified Admin Ticket Fetch
+// Admin Ticket Fetch
 app.get('/api/admin/tickets', async (req, res) => {
   try {
+
     const [rows] = await db.execute(`
       SELECT 
-        id,
-        tracking_id,
-        title,
-        category,
-        status,
-        ai_analysis,
-        suggested_resolution,
-        original_message,
-        created_at
-      FROM tickets
-      ORDER BY created_at DESC
+        t.id,
+        t.tracking_id,
+        t.title,
+        t.category,
+        t.status,
+        t.ai_analysis,
+        t.suggested_resolution,
+        t.original_message,
+        GROUP_CONCAT(u.username) AS assignee_name,
+        t.created_at
+      FROM tickets t
+      LEFT JOIN ticket_assignees ta ON t.id = ta.ticket_id
+      LEFT JOIN users u ON ta.user_id = u.id
+      GROUP BY t.id
+      ORDER BY t.created_at DESC
     `);
 
     console.log(`✅ Admin fetched ${rows.length} tickets`);
@@ -600,9 +600,35 @@ app.get('/api/admin/tickets', async (req, res) => {
   }
 });
 
+// Fetch users 
+app.get('/api/users', async (req, res) => {
+  try {
+
+    const [rows] = await db.execute(`
+      SELECT id, username
+      FROM users
+      ORDER BY username ASC
+    `);
+
+    res.json(rows);
+
+  } catch (error) {
+    console.error("Fetch users error:", error);
+    res.status(500).json({ error: "Failed to load users" });
+  }
+});
+
+
+// ------------------------------
+// EP04 FEATURES
+// ------------------------------
+
+// Staff workload
 app.get('/api/assignee/:userId/tickets', async (req, res) => {
   const { userId } = req.params;
+
   try {
+
     const [rows] = await db.execute(`
       SELECT
         t.id,
@@ -620,16 +646,22 @@ app.get('/api/assignee/:userId/tickets', async (req, res) => {
       ORDER BY t.deadline ASC`,
       [userId]
     );
+
     res.json(rows);
+
   } catch (error) {
     console.error("Workload fetch error:", error);
     res.status(500).json({ error: "Failed to load workload" });
   }
 });
 
+
+// Ticket history
 app.get('/api/tickets/:id/history', async (req, res) => {
   const { id } = req.params;
+
   try {
+
     const [rows] = await db.execute(`
       SELECT h.*, u.username as changed_by_name 
       FROM ticket_history h
@@ -638,58 +670,88 @@ app.get('/api/tickets/:id/history', async (req, res) => {
       ORDER BY h.created_at DESC`,
       [id]
     );
+
     res.json(rows);
+
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch history" });
   }
 });
 
+
+// Reassign ticket
 app.patch('/api/tickets/:id/reassign', async (req, res) => {
+
   const { id } = req.params;
   const { new_assignee_ids, changed_by } = req.body;
 
   try {
-    // Get old assignee name for history log
-    const [oldAssignees] = await db.execute(`
-        SELECT u.username FROM users u
-        JOIN ticket_assignees ta ON u.id = ta.user_id
-        WHERE ta.ticket_id = ?`, [id]);
-    const oldNames = oldAssignees.length > 0 ? oldAssignees.map(a => a.username).join(", ") : "None";
 
-    // 1. Update the ticket assignee
+    const [oldAssignees] = await db.execute(`
+      SELECT u.username FROM users u
+      JOIN ticket_assignees ta ON u.id = ta.user_id
+      WHERE ta.ticket_id = ?`,
+      [id]
+    );
+
+    const oldNames = oldAssignees.length > 0
+      ? oldAssignees.map(a => a.username).join(", ")
+      : "None";
+
     await db.execute('DELETE FROM ticket_assignees WHERE ticket_id = ?', [id]);
+
     let newNames = "None";
 
     if (new_assignee_ids && new_assignee_ids.length > 0) {
+
       const values = new_assignee_ids.map((uid) => [id, uid]);
-      await db.query('INSERT INTO ticket_assignees (ticket_id, user_id) VALUES ?', [values]);
 
-      // Get new assignee names for history log
-      const [newAssigneeRows] = await db.query('SELECT username FROM users WHERE id IN (?)', [new_assignee_ids]);
-      newNames = newAssigneeRows.map(u => u.username).join(", ");
+      await db.execute(
+        'INSERT INTO ticket_assignees (ticket_id, user_id) VALUES ?',
+        [values]
+      );
 
-      await db.execute('UPDATE tickets SET status = "Assigned" WHERE id = ?', [id]);
+      const [newRows] = await db.execute(
+        'SELECT username FROM users WHERE id IN (?)',
+        [new_assignee_ids]
+      );
+
+      newNames = newRows.map(u => u.username).join(", ");
+
+      await db.execute(
+        'UPDATE tickets SET status = "Assigned" WHERE id = ?',
+        [id]
+      );
     }
 
-    // 2. Log the assignment change in history
     const historyMessage = `Reassigned from [${oldNames}] to [${newNames}]`;
+
     await db.execute(
-      `INSERT INTO ticket_history (ticket_id, changed_by, change_type, old_status, new_status) 
+      `INSERT INTO ticket_history 
+       (ticket_id, changed_by, change_type, old_status, new_status) 
        VALUES (?, ?, ?, ?, ?)`,
       [id, changed_by, 'assignment', 'Assigned', historyMessage]
     );
 
     res.json({ success: true });
+
   } catch (error) {
     console.error("Reassignment failed:", error);
     res.status(500).json({ error: "Reassignment failed" });
   }
 });
 
+
+// Staff list
 app.get('/api/staff', async (req, res) => {
   try {
-    const [rows] = await db.execute('SELECT id, username FROM users');
+
+    const [rows] = await db.execute(
+      'SELECT id, username FROM users'
+    );
+
     res.json(rows);
+
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch staff" });
   }
@@ -843,4 +905,9 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
     console.error("Comment error:", error);
     res.status(500).json({ success: false });
   }
+});
+
+const PORT = 3000; // Backend Checker !!! Always has to be at the last line of the file !!!
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Backend listening on port ${PORT}`);
 });

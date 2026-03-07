@@ -3,15 +3,17 @@ import { useMemo, useState, useEffect } from "react";
 const FILTERS = ["Draft", "New", "All"];
 
 function buildCommentTree(comments = []) {
+  const keyOf = (value) => (value === null || value === undefined ? null : String(value));
   const nodes = new Map();
   comments.forEach((c) => {
-    nodes.set(c.id, { ...c, replies: [] });
+    nodes.set(keyOf(c.id), { ...c, replies: [] });
   });
 
   const roots = [];
   nodes.forEach((node) => {
-    if (node.parentId && nodes.has(node.parentId)) {
-      nodes.get(node.parentId).replies.push(node);
+    const parentKey = keyOf(node.parentId);
+    if (parentKey && nodes.has(parentKey)) {
+      nodes.get(parentKey).replies.push(node);
     } else {
       roots.push(node);
     }
@@ -21,8 +23,7 @@ function buildCommentTree(comments = []) {
 }
 
 export default function Admin() {
-  // CHANGED: Added setTickets so we can actually update the list
-  const [tickets, setTickets] = useState([]); 
+  const [tickets, setTickets] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [activeFilter, setActiveFilter] = useState("Draft");
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -33,26 +34,26 @@ export default function Admin() {
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
 
-  // EP03-ST001: Fetch real tickets from the backend
   useEffect(() => {
     const fetchTickets = async () => {
       try {
-        const response = await fetch('http://localhost:3000/api/admin/tickets');
+        const response = await fetch("http://localhost:3000/api/admin/tickets");
         if (response.ok) {
           const data = await response.json();
           setTickets(data);
         } else {
-          // If backend isn't ready, let's use 1 fake ticket so you can see the UI
-          setTickets([{
-            id: 1,
-            tracking_id: "TIC-8888",
-            title: "Sample Draft Ticket",
-            ai_analysis: "This is a test summary for EP03 review.", // Changed from summary
-            suggested_resolution: "1. Check DB\n2. Verify API", // Added for ST005
-            status: "Draft",
-            user_email: "test@example.com",
-            original_message: "The system is down!" // Added for context
-          }]);
+          setTickets([
+            {
+              id: 1,
+              tracking_id: "TIC-8888",
+              title: "Sample Draft Ticket",
+              ai_analysis: "This is a test summary for EP03 review.",
+              suggested_resolution: "1. Check DB\n2. Verify API",
+              status: "Draft",
+              user_email: "test@example.com",
+              original_message: "The system is down!",
+            },
+          ]);
         }
       } catch (error) {
         console.error("Fetch error:", error);
@@ -68,19 +69,19 @@ export default function Admin() {
 
   const draftCount = useMemo(
     () => tickets.filter((ticket) => ticket.status === "Draft").length,
-    [tickets],
+    [tickets]
   );
 
   const mergeEnabled = selectedIds.length >= 2;
   const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
+
   const toggleSelectTicket = (e, ticketId) => {
-  e.stopPropagation(); // Prevents clicking the checkbox from opening the ticket detail
-  setSelectedIds(prev => 
-    prev.includes(ticketId) 
-      ? prev.filter(id => id !== ticketId) 
-      : [...prev, ticketId]
-  );
-};
+    e.stopPropagation();
+    setSelectedIds((prev) =>
+      prev.includes(ticketId) ? prev.filter((id) => id !== ticketId) : [...prev, ticketId]
+    );
+  };
+
   const openTicket = async (ticket) => {
     setSelectedTicket(ticket);
     setCommentDraft("");
@@ -145,10 +146,11 @@ export default function Admin() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-slate-800">{node.author || "Unknown"}</span>
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${node.visibility === "internal"
-              ? "bg-amber-100 text-amber-800"
-              : "bg-blue-100 text-blue-800"
-              }`}>
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                node.visibility === "internal" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+              }`}
+            >
               {node.visibility}
             </span>
           </div>
@@ -168,51 +170,44 @@ export default function Admin() {
   );
 
   const handleUpdateTicket = async (newStatus) => {
-  if (!selectedTicket) return;
+    if (!selectedTicket) return;
 
-  try {
-    const response = await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/status`, { 
-  method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: selectedTicket.title,
-        // ✅ TRAP FIXED: Use ai_analysis instead of summary
-        ai_analysis: selectedTicket.ai_analysis, 
-        // ✅ ST005: Save the internal action plan
-        suggested_resolution: selectedTicket.suggested_resolution, 
-        status: newStatus,
-        category: selectedTicket.category || 'General Inquiry'
-      }),
-    });
+    try {
+      const response = await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: selectedTicket.title,
+          ai_analysis: selectedTicket.ai_analysis,
+          suggested_resolution: selectedTicket.suggested_resolution,
+          status: newStatus,
+          category: selectedTicket.category || "General Inquiry",
+        }),
+      });
 
-    if (response.ok) {
-      // Refresh logic remains the same
-      const refreshRes = await fetch('http://localhost:3000/api/admin/tickets');
-      const updatedData = await refreshRes.json();
-      setTickets(updatedData);
-      
-      setSelectedTicket(null); 
-      alert(`Ticket successfully moved to ${newStatus}!`);
+      if (response.ok) {
+        const refreshRes = await fetch("http://localhost:3000/api/admin/tickets");
+        const updatedData = await refreshRes.json();
+        setTickets(updatedData);
+        setSelectedTicket(null);
+        alert(`Ticket successfully moved to ${newStatus}!`);
+      }
+    } catch (error) {
+      console.error("Update error:", error);
     }
-  } catch (error) {
-    console.error("Update error:", error);
-  }
-};
-  
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-6">
         <header className="mb-6">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">
-            Admin Dashboard
-          </h1>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">Admin Dashboard</h1>
           <p className="mt-2 text-base text-slate-700 md:text-lg">
             Dashboard layout for managing and reviewing tickets.
           </p>
         </header>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-          {/* LEFT COLUMN: Ticket List */}
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-4">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-2xl font-semibold text-slate-950">Tickets</h2>
@@ -243,26 +238,25 @@ export default function Admin() {
               ) : (
                 <div className="space-y-2">
                   {filteredTickets.map((ticket) => (
-                    <div 
+                    <div
                       key={ticket.id}
                       onClick={() => openTicket(ticket)}
-                      // Combined the logic into ONE className string
-                      className={`p-3 rounded-lg border cursor-pointer transition flex items-start gap-3 ${
-                        selectedIds.includes(ticket.id) 
-                          ? 'border-slate-400 bg-slate-100/50' 
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      } ${selectedTicket?.id === ticket.id ? 'ring-2 ring-slate-900' : ''}`}
+                      className={`flex items-start gap-3 rounded-lg border p-3 transition cursor-pointer ${
+                        selectedIds.includes(ticket.id)
+                          ? "border-slate-400 bg-slate-100/50"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      } ${selectedTicket?.id === ticket.id ? "ring-2 ring-slate-900" : ""}`}
                     >
-                      <input 
+                      <input
                         type="checkbox"
-                        className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer accent-slate-900"
+                        className="mt-1 h-4 w-4 cursor-pointer rounded border-slate-300 text-slate-900 accent-slate-900 focus:ring-slate-900"
                         checked={selectedIds.includes(ticket.id)}
                         onChange={(e) => toggleSelectTicket(e, ticket.id)}
-                        onClick={(e) => e.stopPropagation()} 
+                        onClick={(e) => e.stopPropagation()}
                       />
 
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm text-slate-900">{ticket.title}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-slate-900">{ticket.title}</p>
                         <p className="text-xs text-slate-500">{ticket.tracking_id}</p>
                       </div>
                     </div>
@@ -282,67 +276,67 @@ export default function Admin() {
             </div>
           </section>
 
-          {/* RIGHT COLUMN: The Edit/Review Panel */}
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-8">
             {!selectedTicket ? (
-              <div className="flex h-full items-center justify-center border-2 border-dashed border-slate-200 rounded-xl p-10">
-                <p className="text-lg text-slate-500 italic">No ticket selected. Click a ticket from the list to review it.</p>
+              <div className="flex h-full items-center justify-center rounded-xl border-2 border-dashed border-slate-200 p-10">
+                <p className="text-lg italic text-slate-500">
+                  No ticket selected. Click a ticket from the list to review it.
+                </p>
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="flex justify-between items-center border-b pb-4">
+                <div className="flex items-center justify-between border-b pb-4">
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900">Review Ticket</h2>
                     <p className="text-sm text-slate-500">{selectedTicket.tracking_id}</p>
                   </div>
-                  <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded">
+                  <span className="rounded bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">
                     {selectedTicket.status?.toUpperCase()}
                   </span>
                 </div>
 
                 <div className="space-y-4">
-                  {/* Title */}
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">AI-Suggested Title</label>
-                    <input 
-                      type="text" 
-                      className="w-full rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-slate-900 outline-none"
+                    <label className="mb-1 block text-sm font-semibold text-slate-700">AI-Suggested Title</label>
+                    <input
+                      type="text"
+                      className="w-full rounded-lg border border-slate-300 p-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900"
                       value={selectedTicket.title || ""}
-                      onChange={(e) => setSelectedTicket({...selectedTicket, title: e.target.value})}
+                      onChange={(e) => setSelectedTicket({ ...selectedTicket, title: e.target.value })}
                     />
                   </div>
 
-                  {/* Summary - Mapped to summary */}
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">AI-Generated Summary (Public)</label>
-                    <textarea 
+                    <label className="mb-1 block text-sm font-semibold text-slate-700">
+                      AI-Generated Summary (Public)
+                    </label>
+                    <textarea
                       rows="3"
-                      className="w-full rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-slate-900 outline-none"
+                      className="w-full rounded-lg border border-slate-300 p-2.5 focus:outline-none focus:ring-2 focus:ring-slate-900"
                       value={selectedTicket.ai_analysis || ""}
-                      onChange={(e) => setSelectedTicket({...selectedTicket, ai_analysis: e.target.value})}
+                      onChange={(e) => setSelectedTicket({ ...selectedTicket, ai_analysis: e.target.value })}
                     />
                   </div>
 
-                  {/* Action Plan - ST005 Requirement */}
-                  <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl">
-                    <label className="block text-sm font-bold text-indigo-700 mb-1 uppercase tracking-tight">
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+                    <label className="mb-1 block text-sm font-bold uppercase tracking-tight text-indigo-700">
                       AI Suggested Solution
                     </label>
-                    <textarea 
+                    <textarea
                       rows="4"
-                      className="w-full rounded-lg border border-indigo-200 p-2.5 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                      className="w-full rounded-lg border border-indigo-200 bg-white p-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       value={selectedTicket.suggested_resolution || ""}
-                      onChange={(e) => setSelectedTicket({...selectedTicket, suggested_resolution: e.target.value})}
+                      onChange={(e) => setSelectedTicket({ ...selectedTicket, suggested_resolution: e.target.value })}
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Category</label>
-                      <select 
-                        className="w-full rounded-lg border border-slate-300 p-2.5 bg-white outline-none"
+                      <label className="mb-1 block text-sm font-semibold text-slate-700">Category</label>
+                      <select
+                        className="w-full rounded-lg border border-slate-300 bg-white p-2.5 outline-none"
                         value={selectedTicket.category || "General Inquiry"}
-                        onChange={(e) => setSelectedTicket({...selectedTicket, category: e.target.value})}
+                        onChange={(e) => setSelectedTicket({ ...selectedTicket, category: e.target.value })}
                       >
                         <option>Technical Support</option>
                         <option>Billing/Finance</option>
@@ -353,50 +347,47 @@ export default function Admin() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">User Email (Reference)</label>
-                      <input 
-                        type="text" 
+                      <label className="mb-1 block text-sm font-semibold text-slate-700">User Email (Reference)</label>
+                      <input
+                        type="text"
                         disabled
-                        className="w-full rounded-lg border border-slate-200 p-2.5 bg-slate-50 text-slate-500 cursor-not-allowed" 
+                        className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-500"
                         value={selectedTicket.user_email || ""}
                       />
                     </div>
                   </div>
 
-                  {/* Original Message - Important for Admin Review */}
-                  <div className="mt-4 p-3 bg-slate-50 border rounded-lg">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Original User Message</p>
-                    <p className="text-sm text-slate-600 italic">"{selectedTicket.original_message || "No content"}"</p>
+                  <div className="mt-4 rounded-lg border bg-slate-50 p-3">
+                    <p className="mb-1 text-[10px] font-bold uppercase text-slate-400">Original User Message</p>
+                    <p className="text-sm italic text-slate-600">"{selectedTicket.original_message || "No content"}"</p>
                   </div>
-                  {/* ACTION BUTTONS */}
-                  <div className="flex gap-4 pt-4 border-t">
+
+                  <div className="flex gap-4 border-t pt-4">
                     <button
-                      // ✅ FIX: Added the click handler to save edits but keep it as a Draft
-                      onClick={() => handleUpdateTicket('Draft')}
-                      className="flex-1 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                      onClick={() => handleUpdateTicket("Draft")}
+                      className="flex-1 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                       Keep as Draft
                     </button>
                     <button
-                      // ✅ FIX: Added the click handler to flip status to 'Approved/Open'
-                      onClick={() => handleUpdateTicket('Open')}
-                      className="flex-[2] rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 transition shadow-lg"
+                      onClick={() => handleUpdateTicket("Open")}
+                      className="flex-[2] rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 shadow-lg"
                     >
                       Approve & Open
                     </button>
                   </div>
 
-                  <div className="mt-6 border rounded-xl p-4 bg-slate-50">
-                    <h3 className="text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider">Comment Thread</h3>
+                  <div className="mt-6 rounded-xl border bg-slate-50 p-4">
+                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-700">Comment Thread</h3>
                     {comments.length === 0 ? (
-                      <p className="text-xs text-slate-500 italic">No comments yet.</p>
+                      <p className="text-xs italic text-slate-500">No comments yet.</p>
                     ) : (
-                      <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                      <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
                         {commentTree.map((node) => renderCommentNode(node))}
                       </div>
                     )}
 
-                    <div className="mt-4 border rounded-lg p-3 bg-white">
+                    <div className="mt-4 rounded-lg border bg-white p-3">
                       {replyTargetId ? (
                         <div className="mb-2 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
                           <span>Replying to comment #{replyTargetId}</span>
@@ -410,11 +401,11 @@ export default function Admin() {
                         </div>
                       ) : null}
                       <div className="mb-2">
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">Visibility</label>
+                        <label className="mb-1 block text-xs font-semibold text-slate-600">Visibility</label>
                         <select
                           value={commentVisibility}
                           onChange={(e) => setCommentVisibility(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 p-2 text-sm bg-slate-50"
+                          className="w-full rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm"
                         >
                           <option value="public">Public</option>
                           <option value="internal">Internal</option>
@@ -422,7 +413,7 @@ export default function Admin() {
                       </div>
                       <textarea
                         rows="3"
-                        className="w-full rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-slate-900 outline-none"
+                        className="w-full rounded-lg border border-slate-300 p-2.5 outline-none focus:ring-2 focus:ring-slate-900"
                         placeholder="Write a comment or reply..."
                         value={commentDraft}
                         onChange={(e) => setCommentDraft(e.target.value)}
