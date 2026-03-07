@@ -30,6 +30,8 @@ export default function Admin() {
   const [comments, setComments] = useState([]);
   const [commentDraft, setCommentDraft] = useState("");
   const [commentVisibility, setCommentVisibility] = useState("public");
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replyVisibility, setReplyVisibility] = useState("public");
   const [replyTargetId, setReplyTargetId] = useState(null);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
@@ -86,6 +88,8 @@ export default function Admin() {
     setSelectedTicket(ticket);
     setCommentDraft("");
     setCommentVisibility("public");
+    setReplyDraft("");
+    setReplyVisibility("public");
     setReplyTargetId(null);
 
     try {
@@ -102,9 +106,9 @@ export default function Admin() {
     }
   };
 
-  const submitComment = async () => {
+  const submitComment = async (rawMessage, parentId = null, visibility = "public") => {
     if (!selectedTicket) return;
-    const message = commentDraft.trim();
+    const message = String(rawMessage || "").trim();
     if (!message) return;
 
     setCommentSubmitting(true);
@@ -114,10 +118,10 @@ export default function Admin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message,
-          visibility: commentVisibility,
+          visibility,
           user_id: user?.id || null,
           actor_role: "admin",
-          parent_id: replyTargetId,
+          parent_id: parentId,
         }),
       });
 
@@ -128,8 +132,13 @@ export default function Admin() {
 
       const newComment = await res.json();
       setComments((prev) => [...prev, newComment]);
-      setCommentDraft("");
-      setReplyTargetId(null);
+      if (parentId) {
+        setReplyDraft("");
+        setReplyVisibility("public");
+        setReplyTargetId(null);
+      } else {
+        setCommentDraft("");
+      }
     } catch (error) {
       alert(error.message || "Failed to post comment");
     } finally {
@@ -137,37 +146,98 @@ export default function Admin() {
     }
   };
 
-  const renderCommentNode = (node, depth = 0) => (
-    <div key={node.id} className="space-y-2">
+  const renderCommentNode = (node, depth = 0) => {
+    const INDENT = 20;
+    const badgeCls = node.visibility === "internal"
+      ? "border-amber-200 bg-amber-100 text-amber-800"
+      : "border-blue-200 bg-blue-50 text-blue-700";
+
+    return (
       <div
-        className="rounded-lg border bg-white p-3"
-        style={{ marginLeft: depth > 0 ? `${Math.min(depth * 24, 72)}px` : "0px" }}
+        key={node.id}
+        className="relative space-y-2"
+        style={{ marginLeft: depth > 0 ? `${depth * INDENT}px` : "0px" }}
       >
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-800">{node.author || "Unknown"}</span>
-            <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                node.visibility === "internal" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
-              }`}
-            >
-              {node.visibility}
-            </span>
+        {depth > 0 ? (
+          <>
+            <div className="absolute left-0 top-0 bottom-0 w-px bg-slate-300" />
+            <div className="absolute left-0 top-5 h-px w-3 bg-slate-300" />
+          </>
+        ) : null}
+
+        <div className="ml-4">
+          <div className="flex items-center gap-3">
+            <div className="relative flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-800">{node.author || "Unknown"}</span>
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${badgeCls}`}>
+                {node.visibility}
+              </span>
+              <span className="text-[10px] font-semibold text-slate-500">{new Date(node.createdAt).toLocaleString()}</span>
+            </div>
           </div>
-          <span className="text-[10px] text-slate-400">{new Date(node.createdAt).toLocaleString()}</span>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{node.message}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setReplyTargetId(node.id);
+              setReplyDraft("");
+              setReplyVisibility(commentVisibility);
+            }}
+            className="mt-2 text-sm font-semibold text-blue-600 hover:underline"
+          >
+            Reply
+          </button>
+
+          {String(replyTargetId) === String(node.id) ? (
+            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+              <div className="mb-2 flex items-center justify-between text-xs text-blue-800">
+                <span>Replying to {node.author || "User"}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplyTargetId(null);
+                    setReplyDraft("");
+                    setReplyVisibility("public");
+                  }}
+                  className="font-semibold hover:underline"
+                >
+                  Cancel
+                </button>
+              </div>
+              <div className="mb-2">
+                <label className="mb-1 block text-xs font-semibold text-slate-600">Visibility</label>
+                <select
+                  value={replyVisibility}
+                  onChange={(e) => setReplyVisibility(e.target.value)}
+                  className="w-full rounded-lg border p-2 text-sm bg-white"
+                >
+                  <option value="public">Public</option>
+                  <option value="internal">Internal</option>
+                </select>
+              </div>
+              <textarea
+                className="h-24 w-full rounded-lg border bg-white p-2.5"
+                placeholder={`Reply to ${node.author || "User"}...`}
+                value={replyDraft}
+                onChange={(e) => setReplyDraft(e.target.value)}
+              />
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => submitComment(replyDraft, node.id, replyVisibility)}
+                  disabled={commentSubmitting || !replyDraft.trim()}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {commentSubmitting ? "Posting..." : "Post Reply"}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
-        <p className="mt-2 text-xs text-slate-700 whitespace-pre-wrap">{node.message}</p>
-        <button
-          type="button"
-          onClick={() => setReplyTargetId(node.id)}
-          className="mt-2 text-xs font-semibold text-blue-600 hover:underline"
-        >
-          Reply
-        </button>
+
+        {node.replies.map((child) => renderCommentNode(child, depth + 1))}
       </div>
-      {node.replies.map((child) => renderCommentNode(child, depth + 1))}
-    </div>
-  );
+    );
+  };
 
   const handleUpdateTicket = async (newStatus) => {
     if (!selectedTicket) return;
@@ -382,52 +452,49 @@ export default function Admin() {
                     {comments.length === 0 ? (
                       <p className="text-xs italic text-slate-500">No comments yet.</p>
                     ) : (
-                      <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
-                        {commentTree.map((node) => renderCommentNode(node))}
+                      <div className="max-h-72 overflow-y-auto pr-1">
+                        {commentTree.map((node) => (
+                          <div
+                            key={`root-${node.id}`}
+                            className="mb-6 border-b border-slate-200 pb-10 last:mb-0 last:border-b-0 last:pb-0"
+                          >
+                            {renderCommentNode(node)}
+                          </div>
+                        ))}
                       </div>
                     )}
 
-                    <div className="mt-4 rounded-lg border bg-white p-3">
-                      {replyTargetId ? (
-                        <div className="mb-2 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                          <span>Replying to comment #{replyTargetId}</span>
-                          <button
-                            type="button"
-                            onClick={() => setReplyTargetId(null)}
-                            className="font-semibold hover:underline"
+                    {!replyTargetId ? (
+                      <div className="mt-4 rounded-lg border bg-white p-3">
+                        <div className="mb-2">
+                          <label className="mb-1 block text-xs font-semibold text-slate-600">Visibility</label>
+                          <select
+                            value={commentVisibility}
+                            onChange={(e) => setCommentVisibility(e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm"
                           >
-                            Cancel
+                            <option value="public">Public</option>
+                            <option value="internal">Internal</option>
+                          </select>
+                        </div>
+                        <textarea
+                          rows="3"
+                          className="w-full rounded-lg border border-slate-300 p-2.5 outline-none focus:ring-2 focus:ring-slate-900"
+                          placeholder="Write a comment or reply..."
+                          value={commentDraft}
+                          onChange={(e) => setCommentDraft(e.target.value)}
+                        />
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            onClick={() => submitComment(commentDraft, null, commentVisibility)}
+                            disabled={commentSubmitting || !commentDraft.trim()}
+                            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                          >
+                            {commentSubmitting ? "Posting..." : "Post Comment"}
                           </button>
                         </div>
-                      ) : null}
-                      <div className="mb-2">
-                        <label className="mb-1 block text-xs font-semibold text-slate-600">Visibility</label>
-                        <select
-                          value={commentVisibility}
-                          onChange={(e) => setCommentVisibility(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm"
-                        >
-                          <option value="public">Public</option>
-                          <option value="internal">Internal</option>
-                        </select>
                       </div>
-                      <textarea
-                        rows="3"
-                        className="w-full rounded-lg border border-slate-300 p-2.5 outline-none focus:ring-2 focus:ring-slate-900"
-                        placeholder="Write a comment or reply..."
-                        value={commentDraft}
-                        onChange={(e) => setCommentDraft(e.target.value)}
-                      />
-                      <div className="mt-3 flex justify-end">
-                        <button
-                          onClick={submitComment}
-                          disabled={commentSubmitting || !commentDraft.trim()}
-                          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                        >
-                          {commentSubmitting ? "Posting..." : "Post Comment"}
-                        </button>
-                      </div>
-                    </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
