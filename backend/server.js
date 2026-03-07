@@ -72,7 +72,7 @@ app.post('/api/tickets', async (req, res) => {
   let finalTitle = title || "New Support Request";
   const finalEmail = email;
   let finalCategory = category || "General";
-  
+
   if (!finalEmail || finalDescription === "No content provided") {
     return res.status(400).json({ error: "Email and message are required." });
   }
@@ -86,15 +86,15 @@ app.post('/api/tickets', async (req, res) => {
     try {
       if (finalDescription !== "No content provided") {
         const chatCompletion = await groq.chat.completions.create({
-          messages: [{ 
-            role: "user", 
+          messages: [{
+            role: "user",
             content: `Analyze this support request: "${finalDescription}". 
                       Provide a JSON response with:
                       1. "title": concise title (max 100 chars).
                       2. "summary": structured summary (max 500 chars).
                       Do NOT return JSON inside the summary.
                       3. "category": ONE from: [Technical Support, Billing, Account Access, Feature Request, General Inquiry].
-                      4. "suggested_solution": Propose 1-3 actionable steps or resources to resolve this issue.` 
+                      4. "suggested_solution": Propose 1-3 actionable steps or resources to resolve this issue.`
           }],
           model: "llama-3.3-70b-versatile",
           response_format: { type: "json_object" }
@@ -102,23 +102,23 @@ app.post('/api/tickets', async (req, res) => {
 
         const aiData = JSON.parse(chatCompletion.choices[0]?.message?.content);
         aiSummary = aiData.summary || "No summary available";
-        finalTitle = aiData.title || finalTitle; 
-        finalCategory = aiData.category || finalCategory; 
-        
+        finalTitle = aiData.title || finalTitle;
+        finalCategory = aiData.category || finalCategory;
+
         // 2. ASSIGN IT HERE (Make sure the name matches your DB call exactly)
         if (Array.isArray(aiData.suggested_solution)) {
           suggestedSolution = aiData.suggested_solution.join("\n");
         } else {
           suggestedSolution = aiData.suggested_solution || suggestedSolution;
         }
-        
+
         console.log(`🤖 AI Result: [${finalCategory}] ${finalTitle}`);
-        
+
         aiSummary = aiData.summary || aiSummary;
-        finalTitle = aiData.title || finalTitle; 
+        finalTitle = aiData.title || finalTitle;
         // This clears ST003:
-        finalCategory = aiData.category || finalCategory; 
-        
+        finalCategory = aiData.category || finalCategory;
+
         console.log(`🤖 AI Result: [${finalCategory}] ${finalTitle}`);
       }
     } catch (aiError) {
@@ -129,13 +129,13 @@ app.post('/api/tickets', async (req, res) => {
     const [result] = await db.execute(
       'INSERT INTO tickets (tracking_id, title, category, status, user_email, ai_analysis, original_message, suggested_resolution) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [
-        trackingIdStr, 
-        finalTitle, 
-        finalCategory, 
+        trackingIdStr,
+        finalTitle,
+        finalCategory,
         'Draft',           // ✅ CHANGED: Now satisfies ST007 requirement
-        finalEmail, 
+        finalEmail,
         aiSummary, // Ensure this is a string for the DB
-        finalDescription, 
+        finalDescription,
         suggestedSolution  // AI's suggested steps from ST005
       ]
     );
@@ -451,6 +451,13 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
       ]
     );
 
+    let deadlineUpdate = "";
+    if (oldStatus === 'Draft' && status === 'Open') {
+      const threeDaysFromNow = new Date();
+      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+      await db.execute('UPDATE tickets SET deadline = ? WHERE id = ?', [threeDaysFromNow, id]);
+    }
+
     // 3️ Log history (EP04 Audit Trail)
     await db.execute(
       `INSERT INTO ticket_history 
@@ -515,6 +522,73 @@ app.get('/api/admin/tickets', async (req, res) => {
   } catch (error) {
     console.error("Admin ticket fetch error:", error);
     res.status(500).json({ error: "Failed to load tickets" });
+  }
+});
+
+app.get('/api/assignee/:userId/tickets', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const [rows] = await db.execute(`
+      SELECT id, tracking_id, title, status, deadline, category, ai_analysis, suggested_resolution
+      FROM tickets
+      WHERE assignee_id = ?
+      ORDER BY deadline ASC`,
+      [userId]
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error("Workload fetch error:", error);
+    res.status(500).json({ error: "Failed to load workload" });
+  }
+});
+
+app.get('/api/tickets/:id/history', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await db.execute(`
+      SELECT h.*, u.username as changed_by_name 
+      FROM ticket_history h
+      LEFT JOIN users u ON h.changed_by = u.id
+      WHERE h.ticket_id = ?
+      ORDER BY h.created_at DESC`,
+      [id]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch history" });
+  }
+});
+
+app.patch('/api/tickets/:id/reassign', async (req, res) => {
+  const { id } = req.params;
+  const { new_assignee_id, changed_by } = req.body;
+
+  try {
+    // 1. Update the ticket assignee
+    await db.execute(
+      'UPDATE tickets SET assignee_id = ?, status = "Assigned" WHERE id = ?',
+      [new_assignee_id, id]
+    );
+
+    // 2. Log the assignment change in history
+    await db.execute(
+      `INSERT INTO ticket_history (ticket_id, changed_by, change_type, new_status) 
+       VALUES (?, ?, 'assignment', 'Reassigned')`,
+      [id, changed_by]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Reassignment failed" });
+  }
+});
+
+app.get('/api/staff', async (req, res) => {
+  try {
+    const [rows] = await db.execute('SELECT id, username FROM users');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch staff" });
   }
 });
 

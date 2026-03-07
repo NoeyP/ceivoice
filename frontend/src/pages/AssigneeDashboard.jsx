@@ -41,14 +41,28 @@ export default function AssigneeDashboard() {
         body: JSON.stringify({
           status: newStatus,
           changed_by: user.id,
-          comment: resolutionComment
+          comment: resolutionComment || "",
+          title: selectedTicket.title || "No Title",
+          ai_analysis: selectedTicket.ai_analysis || "No ai_analysis",
+          suggested_resolution: selectedTicket.suggested_resolution || "No suggested resolution",
+          category: selectedTicket.category || "General"
         }),
       });
       if (res.ok) {
+        const response = await fetch(`http://localhost:3000/api/assignee/${user.id}/tickets`);
+        const data = await response.json();
+        setTickets(data);
+
         setSelectedTicket(null);
         setResolutionComment("");
+        alert("Ticket updated successfully!");
+      } else {
+        const errorData = await res.json();
+        alert(`Error: ${errorData.message}`);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error("Update failed:", err);
+    }
   };
 
   // Get current logged-in user from localStorage
@@ -103,7 +117,7 @@ export default function AssigneeDashboard() {
                   </span>
                 </td>
                 <td className="p-4 text-sm text-slate-600">
-                  {new Date(ticket.deadline).toLocaleString()}
+                  {ticket.deadline ? new Date(ticket.deadline).toLocaleString() : "No Deadline Set"}
                 </td>
                 <td className="p-4">
                   <button
@@ -149,6 +163,9 @@ export default function AssigneeDashboard() {
                       alert("Ticket successfully reassigned.");
                       setSelectedTicket(null);
                       // Refresh workload list
+                      const response = await fetch(`http://localhost:3000/api/assignee/${user.id}/tickets`);
+                      const data = await response.json();
+                      setTickets(data);
                     }
                   }}
                 >
