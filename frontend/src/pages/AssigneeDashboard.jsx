@@ -10,6 +10,7 @@ export default function AssigneeDashboard() {
   const [allAssignees, setAllAssignees] = useState([]);
 
   const [history, setHistory] = useState([]);
+  const [comments, setComments] = useState([]);
 
   useEffect(() => {
     const fetchStaff = async () => {
@@ -23,9 +24,14 @@ export default function AssigneeDashboard() {
   const handleManage = async (ticket) => {
     setSelectedTicket(ticket);
     setNewStatus(ticket.status);
-    const res = await fetch(`http://localhost:3000/api/tickets/${ticket.id}/history`);
-    const data = await res.json();
-    setHistory(data);
+    const [historyRes, commentsRes] = await Promise.all([
+      fetch(`http://localhost:3000/api/tickets/${ticket.id}/history`),
+      fetch(`http://localhost:3000/api/tickets/${ticket.id}/comments?scope=staff`)
+    ]);
+    const historyData = await historyRes.json();
+    const commentData = await commentsRes.json();
+    setHistory(historyData);
+    setComments(commentData);
   };
 
   const submitStatusUpdate = async () => {
@@ -134,7 +140,7 @@ export default function AssigneeDashboard() {
 
         {selectedTicket && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl">
+            <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">Manage Ticket: {selectedTicket.tracking_id}</h3>
                 <button onClick={() => setSelectedTicket(null)} className="text-slate-400 hover:text-slate-600">✕</button>
@@ -191,6 +197,34 @@ export default function AssigneeDashboard() {
                           <span className="font-semibold">{h.new_status}</span>
                           <span className="text-slate-500"> by {h.changed_by_name}</span>
                           <p className="text-[10px] text-slate-400">{new Date(h.created_at).toLocaleString()}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="mb-6 bg-slate-50 p-4 rounded-lg border max-h-56 overflow-y-auto">
+                  <h4 className="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wider">Comment Thread</h4>
+                  {comments.length === 0 ? (
+                    <p className="text-xs text-slate-500 italic">No comments yet.</p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {comments.map((c) => (
+                        <li key={c.id} className="rounded-lg border bg-white p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-slate-800">{c.author || "Unknown"}</span>
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                c.visibility === "internal"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-blue-100 text-blue-800"
+                              }`}>
+                                {c.visibility}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400">{new Date(c.createdAt).toLocaleString()}</span>
+                          </div>
+                          <p className="mt-2 text-xs text-slate-700 whitespace-pre-wrap">{c.message}</p>
                         </li>
                       ))}
                     </ul>

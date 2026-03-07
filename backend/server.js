@@ -380,17 +380,21 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
     // 2️ Get public comments
     const [comments] = await db.execute(
       `SELECT 
-        id,
-        message,
-        created_at AS createdAt
-      FROM ticket_comments
-      WHERE ticket_id = ? 
-      AND visibility = 'public'
-      ORDER BY created_at ASC`,
+        c.id,
+        c.message,
+        c.visibility,
+        c.created_at AS createdAt,
+        COALESCE(u.username, 'User') AS author
+      FROM ticket_comments c
+      LEFT JOIN users u ON c.user_id = u.id
+      WHERE c.ticket_id = ? 
+      AND c.visibility = 'public'
+      ORDER BY c.created_at ASC`,
       [ticket.id]
     );
 
     // 3️ Attach comments
+    ticket.comments = comments;
     ticket.publicComments = comments;
 
     // 4️ Send response
@@ -399,6 +403,39 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
   } catch (error) {
     console.error("Public ticket fetch error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.get('/api/tickets/:id/comments', async (req, res) => {
+  const { id } = req.params;
+  const { scope } = req.query;
+  const isStaffScope = scope === 'staff';
+
+  try {
+    const whereVisibility = isStaffScope
+      ? `c.visibility IN ('public', 'internal')`
+      : `c.visibility = 'public'`;
+
+    const [rows] = await db.execute(
+      `SELECT
+        c.id,
+        c.ticket_id AS ticketId,
+        c.message,
+        c.visibility,
+        c.created_at AS createdAt,
+        COALESCE(u.username, 'User') AS author
+      FROM ticket_comments c
+      LEFT JOIN users u ON c.user_id = u.id
+      WHERE c.ticket_id = ?
+      AND ${whereVisibility}
+      ORDER BY c.created_at ASC`,
+      [id]
+    );
+
+    res.json(rows);
+  } catch (error) {
+    console.error("Ticket comment fetch error:", error);
+    res.status(500).json({ message: "Failed to fetch comments" });
   }
 });
 
@@ -634,15 +671,25 @@ app.post("/api/google-login", async (req, res) => {
 app.post('/api/tickets/:id/comments', async (req, res) => {
 
   const { id } = req.params;
-  const { message } = req.body;
+  const { message, visibility = 'public', user_id = null } = req.body;
+  const normalizedVisibility = String(visibility || 'public').toLowerCase();
+  const cleanMessage = String(message || "").trim();
+
+  if (!cleanMessage) {
+    return res.status(400).json({ message: "Comment message is required" });
+  }
+
+  if (!['public', 'internal'].includes(normalizedVisibility)) {
+    return res.status(400).json({ message: "Invalid visibility value" });
+  }
 
   try {
 
     // 1️ Save comment
     const [result] = await db.execute(
       `INSERT INTO ticket_comments (ticket_id, user_id, message, visibility)
-       VALUES (?, ?, ?, 'public')`,
-      [id, null, message]   // public user comment
+       VALUES (?, ?, ?, ?)`,
+      [id, user_id || null, cleanMessage, normalizedVisibility]
     );
 
     // 2️ Get ticket info
@@ -662,9 +709,20 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
     }
 
     // 4️ Return comment to frontend
+    let author = "User";
+    if (user_id) {
+      const [users] = await db.execute(
+        `SELECT username FROM users WHERE id = ? LIMIT 1`,
+        [user_id]
+      );
+      author = users.length > 0 ? users[0].username : "Staff";
+    }
+
     res.json({
       id: result.insertId,
-      message: message,
+      message: cleanMessage,
+      visibility: normalizedVisibility,
+      author,
       createdAt: new Date().toISOString()
     });
 
