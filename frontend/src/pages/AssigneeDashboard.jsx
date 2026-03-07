@@ -32,7 +32,7 @@ export default function AssigneeDashboard() {
     });
 
     if (res.ok) {
-      alert("Ticket successfully reassigned to multiple users.");
+      alert("Ticket successfully reassigned.");
       setSelectedTicket(null);
       setSelectedAssignees([]);
       // Refresh your list here...
@@ -211,8 +211,10 @@ export default function AssigneeDashboard() {
                     <ul className="space-y-2">
                       {history.map((h, i) => (
                         <li key={i} className="text-xs border-l-2 border-slate-300 pl-2">
-                          <span className="font-semibold">{h.new_status}</span>
-                          <span className="text-slate-500"> by {h.changed_by_name}</span>
+                          <p className="font-semibold text-slate-800">
+                            {h.change_type === 'assignment' ? h.new_status : `Status: ${h.old_status} -> ${h.new_status}`}
+                          </p>
+                          <p className="text-slate-500">by {h.changed_by_name || 'System'}</p>
                           <p className="text-[10px] text-slate-400">{new Date(h.created_at).toLocaleString()}</p>
                         </li>
                       ))}

@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS tickets ( -- Ticket
 CREATE TABLE IF NOT EXISTS ticket_history (
     id INT AUTO_INCREMENT PRIMARY KEY,
     ticket_id INT,
-    old_status VARCHAR(50),
-    new_status VARCHAR(50),
+    old_status TEXT,
+    new_status TEXT,
     changed_by INT NULL,
     change_type VARCHAR(50), -- 'status' or 'assignment'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

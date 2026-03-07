@@ -578,6 +578,7 @@ app.get('/api/assignee/:userId/tickets', async (req, res) => {
       FROM tickets t
       JOIN ticket_assignees ta ON t.id = ta.ticket_id
       WHERE ta.user_id = ?
+      AND t.status NOT IN ('Solved', 'Failed')
       ORDER BY t.deadline ASC`,
       [userId]
     );
@@ -610,20 +611,34 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
   const { new_assignee_ids, changed_by } = req.body;
 
   try {
+    // Get old assignee name for history log
+    const [oldAssignees] = await db.execute(`
+        SELECT u.username FROM users u
+        JOIN ticket_assignees ta ON u.id = ta.user_id
+        WHERE ta.ticket_id = ?`, [id]);
+    const oldNames = oldAssignees.length > 0 ? oldAssignees.map(a => a.username).join(", ") : "None";
+
     // 1. Update the ticket assignee
     await db.execute('DELETE FROM ticket_assignees WHERE ticket_id = ?', [id]);
+    let newNames = "None";
 
     if (new_assignee_ids && new_assignee_ids.length > 0) {
       const values = new_assignee_ids.map((uid) => [id, uid]);
       await db.query('INSERT INTO ticket_assignees (ticket_id, user_id) VALUES ?', [values]);
+
+      // Get new assignee names for history log
+      const [newAssigneeRows] = await db.query('SELECT username FROM users WHERE id IN (?)', [new_assignee_ids]);
+      newNames = newAssigneeRows.map(u => u.username).join(", ");
+
       await db.execute('UPDATE tickets SET status = "Assigned" WHERE id = ?', [id]);
     }
 
     // 2. Log the assignment change in history
+    const historyMessage = `Reassigned from [${oldNames}] to [${newNames}]`;
     await db.execute(
-      `INSERT INTO ticket_history (ticket_id, changed_by, change_type, new_status) 
-       VALUES (?, ?, 'assignment', 'Reassigned')`,
-      [id, changed_by]
+      `INSERT INTO ticket_history (ticket_id, changed_by, change_type, old_status, new_status) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, changed_by, 'assignment', 'Assigned', historyMessage]
     );
 
     res.json({ success: true });
