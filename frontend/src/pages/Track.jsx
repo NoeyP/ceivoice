@@ -185,7 +185,7 @@ export default function Track() {
           <input
             value={inputTid}
             onChange={(e) => setInputTid(e.target.value)}
-            placeholder="e.g. TCK-2026-000123"
+            placeholder="e.g. TIC-2026-000123"
             className="w-full md:flex-1 border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-200"
           />
           <button

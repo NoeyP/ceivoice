@@ -12,6 +12,36 @@ export default function AssigneeDashboard() {
   const [history, setHistory] = useState([]);
   const [comments, setComments] = useState([]);
 
+
+  const [selectedAssignees, setSelectedAssignees] = useState([]);
+
+  const toggleAssignee = (userId) => {
+    setSelectedAssignees(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleReassign = async () => {
+    const res = await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/reassign`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        new_assignee_ids: selectedAssignees,
+        changed_by: user.id
+      }),
+    });
+
+    if (res.ok) {
+      alert("Ticket successfully reassigned to multiple users.");
+      setSelectedTicket(null);
+      setSelectedAssignees([]);
+      // Refresh your list here...
+      const response = await fetch(`http://localhost:3000/api/assignee/${user.id}/tickets`);
+      const data = await response.json();
+      setTickets(data);
+    }
+  };
+
   useEffect(() => {
     const fetchStaff = async () => {
       const res = await fetch('http://localhost:3000/api/staff');
@@ -147,41 +177,28 @@ export default function AssigneeDashboard() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-1 text-slate-700">
+                <label className="block text-sm font-semibold mb-2 text-slate-700">
                   Reassign Ticket (Escalation)
                 </label>
-                <select
-                  className="w-full border rounded-lg p-2.5 bg-slate-50"
-                  onChange={async (e) => {
-                    const newAssigneeId = e.target.value;
-                    if (!newAssigneeId) return;
-
-                    const res = await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/reassign`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        new_assignee_id: newAssigneeId,
-                        changed_by: user.id
-                      }),
-                    });
-
-                    if (res.ok) {
-                      alert("Ticket successfully reassigned.");
-                      setSelectedTicket(null);
-                      // Refresh workload list
-                      const response = await fetch(`http://localhost:3000/api/assignee/${user.id}/tickets`);
-                      const data = await response.json();
-                      setTickets(data);
-                    }
-                  }}
-                >
-                  <option value="">Select a new Assignee...</option>
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-3 border rounded-lg bg-slate-50">
                   {allAssignees.map(staff => (
-                    staff.id !== user.id && (
-                      <option key={staff.id} value={staff.id}>{staff.username}</option>
-                    )
+                    <label key={staff.id} className="flex items-center gap-2 p-2 hover:bg-white rounded cursor-pointer transition">
+                      <input
+                        type="checkbox"
+                        checked={selectedAssignees.includes(staff.id)}
+                        onChange={() => toggleAssignee(staff.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      />
+                      <span className="text-sm text-slate-700">{staff.username}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
+                <button
+                  onClick={handleReassign}
+                  className="mt-3 w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700"
+                >
+                  Confirm Reassignment
+                </button>
               </div>
 
               <div className="space-y-4">
@@ -214,11 +231,10 @@ export default function AssigneeDashboard() {
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-semibold text-slate-800">{c.author || "Unknown"}</span>
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                                c.visibility === "internal"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-blue-100 text-blue-800"
-                              }`}>
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${c.visibility === "internal"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-blue-100 text-blue-800"
+                                }`}>
                                 {c.visibility}
                               </span>
                             </div>

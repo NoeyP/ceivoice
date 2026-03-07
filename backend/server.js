@@ -566,10 +566,19 @@ app.get('/api/assignee/:userId/tickets', async (req, res) => {
   const { userId } = req.params;
   try {
     const [rows] = await db.execute(`
-      SELECT id, tracking_id, title, status, deadline, category, ai_analysis, suggested_resolution
-      FROM tickets
-      WHERE assignee_id = ?
-      ORDER BY deadline ASC`,
+      SELECT
+        t.id,
+        t.tracking_id,
+        t.title,
+        t.status,
+        t.deadline,
+        t.category,
+        t.ai_analysis,
+        t.suggested_resolution
+      FROM tickets t
+      JOIN ticket_assignees ta ON t.id = ta.ticket_id
+      WHERE ta.user_id = ?
+      ORDER BY t.deadline ASC`,
       [userId]
     );
     res.json(rows);
@@ -598,14 +607,17 @@ app.get('/api/tickets/:id/history', async (req, res) => {
 
 app.patch('/api/tickets/:id/reassign', async (req, res) => {
   const { id } = req.params;
-  const { new_assignee_id, changed_by } = req.body;
+  const { new_assignee_ids, changed_by } = req.body;
 
   try {
     // 1. Update the ticket assignee
-    await db.execute(
-      'UPDATE tickets SET assignee_id = ?, status = "Assigned" WHERE id = ?',
-      [new_assignee_id, id]
-    );
+    await db.execute('DELETE FROM ticket_assignees WHERE ticket_id = ?', [id]);
+
+    if (new_assignee_ids && new_assignee_ids.length > 0) {
+      const values = new_assignee_ids.map((uid) => [id, uid]);
+      await db.query('INSERT INTO ticket_assignees (ticket_id, user_id) VALUES ?', [values]);
+      await db.execute('UPDATE tickets SET status = "Assigned" WHERE id = ?', [id]);
+    }
 
     // 2. Log the assignment change in history
     await db.execute(
@@ -616,6 +628,7 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
+    console.error("Reassignment failed:", error);
     res.status(500).json({ error: "Reassignment failed" });
   }
 });
