@@ -223,28 +223,28 @@ export default function Track() {
         <div className="ml-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 relative">
-              <p className="font-medium">{node.author || "Unknown"}</p>
-              <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+              <p className="font-medium text-sm text-slate-800">{node.author || "Unknown"}</p>
+              <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
                 Public
               </span>
-              <p className="text-xs font-semibold text-gray-500">{formatDate(node.createdAt)}</p>
+              <p className="text-[11px] font-semibold text-slate-500">{formatDate(node.createdAt)}</p>
             </div>
           </div>
-          <p className="text-gray-700 mt-2 whitespace-pre-wrap">{node.message}</p>
+          <p className="text-slate-700 mt-2 text-sm whitespace-pre-wrap">{node.message}</p>
           <button
             type="button"
             onClick={() => {
               setReplyTarget({ id: node.id, author: node.author || "User" });
               setReplyComment("");
             }}
-            className="mt-2 text-sm font-medium text-blue-600 hover:underline"
+            className="mt-2 text-xs font-semibold text-blue-600 hover:underline"
           >
             Reply
           </button>
 
           {replyTarget?.id === node.id ? (
-            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
-              <div className="mb-2 flex items-center justify-between text-sm text-blue-800">
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
                 <span>Replying to {replyTarget.author}</span>
                 <button
                   type="button"
@@ -252,7 +252,7 @@ export default function Track() {
                     setReplyTarget(null);
                     setReplyComment("");
                   }}
-                  className="font-semibold hover:underline"
+                  className="font-semibold text-slate-500 hover:underline"
                 >
                   Cancel reply
                 </button>
@@ -262,13 +262,13 @@ export default function Track() {
                 onChange={(e) => setReplyComment(e.target.value)}
                 rows={3}
                 placeholder={`Reply to ${replyTarget.author}...`}
-                className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-200 bg-white"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-200 bg-white"
               />
               <div className="mt-2 flex justify-end">
                 <button
                   onClick={() => submitComment(replyComment, node.id)}
                   disabled={commentBusy || !replyComment.trim()}
-                  className="px-4 py-2 rounded-lg bg-gray-900 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-black transition"
+                  className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800 transition"
                 >
                   {commentBusy ? "Posting..." : "Post Reply"}
                 </button>
@@ -297,33 +297,33 @@ export default function Track() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-10">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">Track Ticket</h1>
-        <p className="text-gray-600 mt-2">
+    <div className="max-w-6xl mx-auto px-3 md:px-5 py-8 text-slate-800">
+      <div className="mb-5">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Track Ticket</h1>
+        <p className="text-sm text-slate-500 mt-2">
           Enter your tracking ID to view the latest ticket status and public updates.
         </p>
       </div>
 
-      <div className="bg-white border rounded-2xl p-4 md:p-6 shadow-sm">
+      <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 md:p-5 shadow-sm">
         <div className="flex flex-col md:flex-row gap-3">
           <input
             value={inputTid}
             onChange={(e) => setInputTid(e.target.value)}
             placeholder="e.g. TIC-2026-000123"
-            className="w-full md:flex-1 border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-200"
+            className="w-full md:flex-1 border border-slate-200 rounded-xl px-4 py-3 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
           />
           <button
             onClick={onTrack}
-            className="px-5 py-3 rounded-xl bg-gray-900 text-white hover:bg-black transition"
+            className="px-6 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition"
           >
             Track
           </button>
         </div>
 
         {activeTid ? (
-          <p className="text-sm text-gray-500 mt-3">
-            Showing results for: <span className="font-medium text-gray-700">{activeTid}</span>
+          <p className="text-xs text-slate-500 mt-3">
+            Showing results for: <span className="font-semibold text-slate-700">{activeTid}</span>
           </p>
         ) : null}
       </div>
@@ -343,166 +343,167 @@ export default function Track() {
 
       {ticket && !loading ? (
         <>
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="bg-white border rounded-2xl p-6 shadow-sm">
-              <h3 className="text-lg font-semibold mb-4">Ticket Journey (Audit Log)</h3>
-              <div className="space-y-4">
-                {history.length === 0 ? (
-                  <p className="text-sm text-gray-500 italic">No history recorded yet.</p>
-                ) : (
-                  history.map((h, index) => (
-                    <div key={index} className="flex gap-4 items-start">
-                      <div className="mt-1.5 w-2 h-2 rounded-full bg-slate-900 shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium text-slate-900">
-                          Status changed from <span className="text-slate-500 line-through">{h.old_status}</span> to <b>{h.new_status}</b>
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Updated by {h.changed_by_name} on {new Date(h.created_at).toLocaleString()}
-                        </p>
+          <div className="mt-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+            <div className="space-y-4 xl:col-span-4">
+              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <h3 className="text-base font-semibold mb-3 text-slate-800">Ticket Journey (Audit Log)</h3>
+                <div className="space-y-4">
+                  {history.length === 0 ? (
+                    <p className="text-sm text-slate-500 italic">No history recorded yet.</p>
+                  ) : (
+                    history.map((h, index) => (
+                      <div key={index} className="flex gap-4 items-start">
+                        <div className="mt-1.5 w-2 h-2 rounded-full bg-slate-900 shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">
+                            Status changed from <span className="text-slate-500 line-through">{h.old_status}</span> to <b>{h.new_status}</b>
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Updated by {h.changed_by_name} on {new Date(h.created_at).toLocaleString()}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <h3 className="font-semibold text-slate-800">Tracking Info</h3>
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-500">Tracking ID</span>
+                    <span className="font-semibold text-slate-700">{ticket.trackingId || ticket.id}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-500">Status</span>
+                    <span className="font-semibold text-slate-700">{ticket.status || "Unknown"}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 mt-4">
+                  Note: Internal staff notes are hidden from public tracking.
+                </p>
+              </div>
+
+              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <h3 className="font-semibold text-slate-800">People Involved</h3>
+                <div className="mt-3 space-y-4 text-sm">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Creator</p>
+                    <p className="mt-1 font-medium text-slate-800">
+                      {participantLabel(participants.creator, "Unknown Creator")}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Current Assignees</p>
+                    {participants.assignees?.length ? (
+                      <ul className="mt-1 space-y-1">
+                        {participants.assignees.map((assignee) => (
+                          <li key={`assignee-${assignee.id || assignee.email || assignee.name}`} className="text-slate-800">
+                            {participantLabel(assignee)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-slate-500 italic">No assignees</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Followers</p>
+                    {participants.followers?.length ? (
+                      <ul className="mt-1 space-y-1">
+                        {participants.followers.map((follower) => (
+                          <li key={`follower-${follower.id || follower.email || follower.name}`} className="text-slate-800">
+                            {participantLabel(follower)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-slate-500 italic">No followers</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-sm">
+                <h3 className="font-semibold text-lg">Need faster help?</h3>
+                <p className="text-white/85 mt-2 text-sm leading-relaxed">
+                  Add details (device, screenshots, steps) in a public comment to speed up resolution.
+                </p>
               </div>
             </div>
 
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white border rounded-2xl p-6 shadow-sm">
+            <div className="space-y-4 xl:col-span-8">
+              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-xl font-semibold">{ticket.title || "Untitled Ticket"}</h2>
-                    <p className="text-gray-600 mt-1">
-                      Category: <span className="font-medium text-gray-800">{ticket.category || "-"}</span>
+                    <h2 className="text-xl font-semibold text-slate-800">{ticket.title || "Untitled Ticket"}</h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Category: <span className="font-medium text-slate-700">{ticket.category || "-"}</span>
                     </p>
                   </div>
                   <StatusBadge status={ticket.status} />
                 </div>
 
                 {ticket.summary ? (
-                  <p className="text-gray-700 mt-4 leading-relaxed">{ticket.summary}</p>
+                  <p className="text-slate-600 mt-3 leading-relaxed text-sm">{ticket.summary}</p>
                 ) : null}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
-                  <div className="bg-gray-50 border rounded-xl p-4">
-                    <p className="text-xs text-gray-500">Created</p>
-                    <p className="font-medium mt-1">{formatDate(ticket.createdAt)}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                  <div className="bg-slate-100 border border-slate-200 rounded-xl p-3">
+                    <p className="text-xs text-slate-500">Created</p>
+                    <p className="font-medium mt-1 text-slate-700">{formatDate(ticket.createdAt)}</p>
                   </div>
-                  <div className="bg-gray-50 border rounded-xl p-4">
-                    <p className="text-xs text-gray-500">Deadline</p>
-                    <p className="font-medium mt-1">{formatDate(ticket.deadline)}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div className="bg-white border rounded-2xl p-6 shadow-sm">
-                <h3 className="font-semibold">Tracking Info</h3>
-                <div className="mt-3 space-y-2 text-sm">
-                  <div className="flex justify-between gap-4">
-                    <span className="text-gray-500">Tracking ID</span>
-                    <span className="font-medium">{ticket.trackingId || ticket.id}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-gray-500">Status</span>
-                    <span className="font-medium">{ticket.status || "Unknown"}</span>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-4">
-                  Note: Internal staff notes are hidden from public tracking.
-                </p>
-              </div>
-
-              <div className="bg-white border rounded-2xl p-6 shadow-sm">
-                <h3 className="font-semibold">People Involved</h3>
-                <div className="mt-3 space-y-4 text-sm">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-gray-500">Creator</p>
-                    <p className="mt-1 font-medium text-gray-800">
-                      {participantLabel(participants.creator, "Unknown Creator")}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-gray-500">Current Assignees</p>
-                    {participants.assignees?.length ? (
-                      <ul className="mt-1 space-y-1">
-                        {participants.assignees.map((assignee) => (
-                          <li key={`assignee-${assignee.id || assignee.email || assignee.name}`} className="text-gray-800">
-                            {participantLabel(assignee)}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-gray-500 italic">No assignees</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-gray-500">Followers</p>
-                    {participants.followers?.length ? (
-                      <ul className="mt-1 space-y-1">
-                        {participants.followers.map((follower) => (
-                          <li key={`follower-${follower.id || follower.email || follower.name}`} className="text-gray-800">
-                            {participantLabel(follower)}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-gray-500 italic">No followers</p>
-                    )}
+                  <div className="bg-slate-100 border border-slate-200 rounded-xl p-3">
+                    <p className="text-xs text-slate-500">Deadline</p>
+                    <p className="font-medium mt-1 text-slate-700">{formatDate(ticket.deadline)}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-gray-900 text-white rounded-2xl p-6">
-                <h3 className="font-semibold">Need faster help?</h3>
-                <p className="text-white/80 mt-2 text-sm">
-                  Add details (device, screenshots, steps) in a public comment to speed up resolution.
-                </p>
-              </div>
-            </div>
-          </div>
+              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 md:p-5 shadow-sm">
+                <h3 className="text-lg font-semibold mb-4 text-slate-800">Comment Thread</h3>
 
-          <div className="mt-6 bg-white border rounded-2xl p-6 shadow-sm">
-            <h3 className="text-lg font-semibold mb-4">Comment Thread</h3>
+                <div>
+                  {(ticket.comments || []).length === 0 ? (
+                    <p className="text-slate-600 text-sm">No public comments yet.</p>
+                  ) : (
+                    commentTree.map((node) => (
+                      <div key={`root-${node.id}`} className="pb-10 mb-6 border-b border-slate-200 last:pb-0 last:mb-0 last:border-b-0">
+                        {renderCommentNode(node)}
+                      </div>
+                    ))
+                  )}
+                </div>
 
-            <div>
-              {(ticket.comments || []).length === 0 ? (
-                <p className="text-gray-600">No public comments yet.</p>
-              ) : (
-                commentTree.map((node) => (
-                  <div key={`root-${node.id}`} className="pb-10 mb-6 border-b border-slate-200 last:pb-0 last:mb-0 last:border-b-0">
-                    {renderCommentNode(node)}
+                <div className="mt-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Add a public comment
+                  </label>
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    rows={4}
+                    placeholder="Type your message..."
+                    className="w-full border border-slate-200 rounded-2xl px-4 py-3 bg-white text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  />
+                  <div className="flex justify-end mt-3">
+                    <button
+                      onClick={() => submitComment(comment)}
+                      disabled={commentBusy || !comment.trim()}
+                      className="px-5 py-2.5 rounded-lg bg-slate-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition"
+                    >
+                      {commentBusy ? "Posting..." : "Post Comment"}
+                    </button>
                   </div>
-                ))
-              )}
-            </div>
-
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Add a public comment
-              </label>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={4}
-                placeholder="Type your message..."
-                className="w-full border rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-200"
-              />
-              <div className="flex justify-end mt-3">
-                <button
-                  onClick={() => submitComment(comment)}
-                  disabled={commentBusy || !comment.trim()}
-                  className="px-5 py-3 rounded-xl bg-gray-900 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-black transition"
-                >
-                  {commentBusy ? "Posting..." : "Post Comment"}
-                </button>
+                </div>
               </div>
             </div>
 
           </div>
+
         </>
       ) : null}
     </div>
