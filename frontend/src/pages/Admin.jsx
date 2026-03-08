@@ -76,6 +76,14 @@ export default function Admin() {
 
   const mergeEnabled = selectedIds.length >= 2;
   const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
+  const participants = selectedTicket?.participants || { creator: null, assignees: [], followers: [] };
+
+  const participantLabel = (person, fallbackName = "Unknown") => {
+    if (!person) return fallbackName;
+    const name = person.name || person.username || fallbackName;
+    const email = person.email ? ` (${person.email})` : "";
+    return `${name}${email}`;
+  };
 
   const toggleSelectTicket = (e, ticketId) => {
     e.stopPropagation();
@@ -424,6 +432,48 @@ export default function Admin() {
                         className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-500"
                         value={selectedTicket.user_email || ""}
                       />
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700">People Involved</h3>
+                    <div className="mt-3 space-y-3 text-sm">
+                      <div>
+                        <p className="text-xs uppercase text-slate-500">Creator</p>
+                        <p className="font-medium text-slate-800">
+                          {participantLabel(participants.creator, "Unknown Creator")}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs uppercase text-slate-500">Current Assignees</p>
+                        {participants.assignees?.length ? (
+                          <ul className="mt-1 space-y-1">
+                            {participants.assignees.map((assignee) => (
+                              <li key={`assignee-${assignee.id || assignee.email || assignee.name}`} className="text-slate-700">
+                                {participantLabel(assignee)}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-1 italic text-slate-500">No assignees</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-xs uppercase text-slate-500">Followers</p>
+                        {participants.followers?.length ? (
+                          <ul className="mt-1 space-y-1">
+                            {participants.followers.map((follower) => (
+                              <li key={`follower-${follower.id || follower.email || follower.name}`} className="text-slate-700">
+                                {participantLabel(follower)}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-1 italic text-slate-500">No followers</p>
+                        )}
+                      </div>
                     </div>
                   </div>
 

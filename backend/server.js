@@ -15,6 +15,8 @@ const VALID_STATUSES = ['New', 'Assigned', 'Solving', 'Solved', 'Failed', 'Renew
 const STAFF_ROLES = new Set(['assignee', 'admin']);
 const ALL_COMMENT_ROLES = new Set(['user', 'creator', 'follower', 'assignee', 'admin']);
 let hasParentCommentIdColumnCache = null;
+const tableExistsCache = new Map();
+const columnExistsCache = new Map();
 
 
 // create connection
@@ -48,6 +50,126 @@ async function hasParentCommentIdColumn() {
   }
 
   return hasParentCommentIdColumnCache;
+}
+
+async function hasTable(tableName) {
+  if (tableExistsCache.has(tableName)) {
+    return tableExistsCache.get(tableName);
+  }
+
+  try {
+    const [rows] = await db.execute(
+      `SELECT 1
+       FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       LIMIT 1`,
+      [tableName]
+    );
+    const exists = rows.length > 0;
+    tableExistsCache.set(tableName, exists);
+    return exists;
+  } catch (error) {
+    console.error(`Schema check failed for table ${tableName}:`, error.message);
+    tableExistsCache.set(tableName, false);
+    return false;
+  }
+}
+
+async function hasColumn(tableName, columnName) {
+  const key = `${tableName}.${columnName}`;
+  if (columnExistsCache.has(key)) {
+    return columnExistsCache.get(key);
+  }
+
+  try {
+    const [rows] = await db.execute(
+      `SELECT 1
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+       LIMIT 1`,
+      [tableName, columnName]
+    );
+    const exists = rows.length > 0;
+    columnExistsCache.set(key, exists);
+    return exists;
+  } catch (error) {
+    console.error(`Schema check failed for column ${key}:`, error.message);
+    columnExistsCache.set(key, false);
+    return false;
+  }
+}
+
+async function getTicketParticipants(ticketId, creatorEmail) {
+  const creator = {
+    name: null,
+    email: creatorEmail || null,
+  };
+
+  if (creator.email) {
+    try {
+      const [creatorRows] = await db.execute(
+        `SELECT username, email
+         FROM users
+         WHERE LOWER(email) = LOWER(?)
+         LIMIT 1`,
+        [creator.email]
+      );
+      if (creatorRows.length > 0) {
+        creator.name = creatorRows[0].username || null;
+        creator.email = creatorRows[0].email || creator.email;
+      }
+    } catch (error) {
+      console.error("Creator lookup failed:", error.message);
+    }
+  }
+
+  let assignees = [];
+  try {
+    const [assigneeRows] = await db.execute(
+      `SELECT DISTINCT u.id, u.username AS name, u.email
+       FROM ticket_assignees ta
+       JOIN users u ON u.id = ta.user_id
+       WHERE ta.ticket_id = ?
+       ORDER BY u.username ASC`,
+      [ticketId]
+    );
+    assignees = assigneeRows || [];
+  } catch (error) {
+    console.error("Assignee lookup failed:", error.message);
+  }
+
+  let followers = [];
+  try {
+    if (await hasTable('ticket_followers')) {
+      const [followerRows] = await db.execute(
+        `SELECT DISTINCT u.id, u.username AS name, u.email
+         FROM ticket_followers tf
+         JOIN users u ON u.id = tf.user_id
+         WHERE tf.ticket_id = ?
+         ORDER BY u.username ASC`,
+        [ticketId]
+      );
+      followers = followerRows || [];
+    } else if (await hasColumn('ticket_comments', 'actor_role')) {
+      const [followerRows] = await db.execute(
+        `SELECT DISTINCT u.id, u.username AS name, u.email
+         FROM ticket_comments c
+         JOIN users u ON u.id = c.user_id
+         WHERE c.ticket_id = ?
+         AND c.actor_role = 'follower'
+         ORDER BY u.username ASC`,
+        [ticketId]
+      );
+      followers = followerRows || [];
+    }
+  } catch (error) {
+    console.error("Follower lookup failed:", error.message);
+  }
+
+  return { creator, assignees, followers };
 }
 
 // Initialize AI(EP02-ST001)
@@ -385,6 +507,7 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
         title,
         category,
         status,
+        user_email AS userEmail,
         ai_analysis,
         created_at AS createdAt
        FROM tickets
@@ -423,6 +546,7 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
     // 3️ Attach comments
     ticket.comments = comments;
     ticket.publicComments = comments;
+    ticket.participants = await getTicketParticipants(ticket.id, ticket.userEmail);
 
     // 4️ Send response
     res.json(ticket);
@@ -579,6 +703,7 @@ app.get('/api/admin/tickets', async (req, res) => {
         t.title,
         t.category,
         t.status,
+        t.user_email,
         t.ai_analysis,
         t.suggested_resolution,
         t.original_message,
@@ -592,7 +717,13 @@ app.get('/api/admin/tickets', async (req, res) => {
     `);
 
     console.log(`✅ Admin fetched ${rows.length} tickets`);
-    res.json(rows);
+    const rowsWithParticipants = await Promise.all(
+      rows.map(async (row) => ({
+        ...row,
+        participants: await getTicketParticipants(row.id, row.user_email),
+      }))
+    );
+    res.json(rowsWithParticipants);
 
   } catch (error) {
     console.error("Admin ticket fetch error:", error);

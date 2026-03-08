@@ -98,6 +98,14 @@ export default function Track() {
   const [replyTarget, setReplyTarget] = useState(null);
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
   const commentTree = useMemo(() => buildCommentTree(ticket?.comments || []), [ticket?.comments]);
+  const participants = ticket?.participants || { creator: null, assignees: [], followers: [] };
+
+  function participantLabel(person, fallbackName = "Unknown") {
+    if (!person) return fallbackName;
+    const name = person.name || person.username || fallbackName;
+    const email = person.email ? ` (${person.email})` : "";
+    return `${name}${email}`;
+  }
 
   async function fetchTicket(tid) {
     if (!tid) return;
@@ -404,6 +412,48 @@ export default function Track() {
                 <p className="text-xs text-gray-500 mt-4">
                   Note: Internal staff notes are hidden from public tracking.
                 </p>
+              </div>
+
+              <div className="bg-white border rounded-2xl p-6 shadow-sm">
+                <h3 className="font-semibold">People Involved</h3>
+                <div className="mt-3 space-y-4 text-sm">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Creator</p>
+                    <p className="mt-1 font-medium text-gray-800">
+                      {participantLabel(participants.creator, "Unknown Creator")}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Current Assignees</p>
+                    {participants.assignees?.length ? (
+                      <ul className="mt-1 space-y-1">
+                        {participants.assignees.map((assignee) => (
+                          <li key={`assignee-${assignee.id || assignee.email || assignee.name}`} className="text-gray-800">
+                            {participantLabel(assignee)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-gray-500 italic">No assignees</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Followers</p>
+                    {participants.followers?.length ? (
+                      <ul className="mt-1 space-y-1">
+                        {participants.followers.map((follower) => (
+                          <li key={`follower-${follower.id || follower.email || follower.name}`} className="text-gray-800">
+                            {participantLabel(follower)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-gray-500 italic">No followers</p>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="bg-gray-900 text-white rounded-2xl p-6">
