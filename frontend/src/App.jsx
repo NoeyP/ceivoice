@@ -149,7 +149,7 @@ export default function App() {
 
                     <Link
                       to="/track"
-                      className="inline-flex items-center justify-center border border-slate-300 text-slate-800 px-7 py-3.5 rounded-xl text-base font-semibold tracking-tight hover:bg-slate-50 transition-colors"
+                      className="inline-flex items-center justify-center border border-slate-200 bg-slate-50/80 text-slate-800 px-7 py-3.5 rounded-xl text-base font-semibold tracking-tight hover:bg-slate-100 transition-colors"
                     >
                       Track Ticket
                     </Link>

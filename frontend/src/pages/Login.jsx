@@ -90,7 +90,7 @@ export default function Login({ onLogin }) {
         </div>
       )}
 
-      <form onSubmit={handleLogin} className="bg-white border rounded-xl p-6 space-y-6">
+      <form onSubmit={handleLogin} className="bg-slate-50/80 border border-slate-200 rounded-2xl p-6 space-y-6 shadow-sm">
         <div>
           <label className="block text-sm font-medium mb-2">Username</label>
           <input

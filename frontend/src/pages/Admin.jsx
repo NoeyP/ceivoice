@@ -276,7 +276,7 @@ export default function Admin() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-white">
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-6">
         <header className="mb-6">
           <h1 className="text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">Admin Dashboard</h1>
@@ -286,7 +286,7 @@ export default function Admin() {
         </header>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-4">
+          <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm lg:col-span-4">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-2xl font-semibold text-slate-950">Tickets</h2>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-800">
@@ -354,7 +354,7 @@ export default function Admin() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-8">
+          <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-6 shadow-sm lg:col-span-8">
             {!selectedTicket ? (
               <div className="flex h-full items-center justify-center rounded-xl border-2 border-dashed border-slate-200 p-10">
                 <p className="text-lg italic text-slate-500">
@@ -435,7 +435,7 @@ export default function Admin() {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
                     <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700">People Involved</h3>
                     <div className="mt-3 space-y-3 text-sm">
                       <div>
@@ -515,7 +515,7 @@ export default function Admin() {
                     )}
 
                     {!replyTargetId ? (
-                      <div className="mt-4 rounded-lg border bg-white p-3">
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
                         <div className="mb-2">
                           <label className="mb-1 block text-xs font-semibold text-slate-600">Visibility</label>
                           <select
