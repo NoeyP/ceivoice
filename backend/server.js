@@ -383,7 +383,7 @@ app.post("/api/login", (req, res) => {
   const cleanUsername = String(username).trim();
 
   const sql = `
-    SELECT id, username, email, password_hash, google_sub
+    SELECT id, username, email, role, password_hash, google_sub
     FROM users
     WHERE username = ?
     LIMIT 1
@@ -417,6 +417,7 @@ app.post("/api/login", (req, res) => {
         id: user.id,
         username: user.username,
         email: user.email,
+        role: user.role
       },
     });
   });
@@ -914,7 +915,7 @@ app.post("/api/google-login", async (req, res) => {
     const { sub, email, name } = payload;
 
     // Check if user exists by google_sub OR email
-    const findSql = "SELECT id, username, email FROM users WHERE google_sub = ? OR email = ? LIMIT 1";
+    const findSql = "SELECT id, username, email, role FROM users WHERE google_sub = ? OR email = ? LIMIT 1";
 
     connection.query(findSql, [sub, email], (err, rows) => {
       if (rows && rows.length > 0) {
@@ -922,12 +923,12 @@ app.post("/api/google-login", async (req, res) => {
         return res.json({ success: true, user: rows[0] });
       } else {
         // New User - Create them (The "Whole Family" Rule)
-        const insertSql = "INSERT INTO users (username, email, google_sub, password_hash) VALUES (?, ?, ?, NULL)";
+        const insertSql = "INSERT INTO users (username, email, google_sub, role, password_hash) VALUES (?, ?, ?, 'user', NULL)";
         connection.query(insertSql, [name, email, sub], (err, result) => {
           if (err) return res.status(500).json({ error: "Creation failed" });
           res.status(201).json({
             success: true,
-            user: { id: result.insertId, username: name, email: email }
+            user: { id: result.insertId, username: name, email: email, role: 'user' }
           });
         });
       }

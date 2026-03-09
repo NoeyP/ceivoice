@@ -77,19 +77,23 @@ export default function App() {
                     Track
                   </Link>
 
-                  <Link
-                    to="/assignee"
-                    className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
-                  >
-                    Assignee Dashboard
-                  </Link>
+                  {(user.role === 'assignee' || user.role === 'admin') && (
+                    <Link
+                      to="/assignee"
+                      className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
+                    >
+                      Assignee Dashboard
+                    </Link>
+                  )}
 
-                  <Link
-                    to="/admin"
-                    className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
-                  >
-                    Admin
-                  </Link>
+                  {user.role === 'admin' && (
+                    <Link
+                      to="/admin"
+                      className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
+                    >
+                      Admin
+                    </Link>
+                  )}
 
                   <div className="relative" ref={menuRef}>
                     <button
@@ -196,7 +200,7 @@ export default function App() {
           <Route
             path="/admin"
             element={
-              <RequireAuth user={user}>
+              <RequireAuth user={user} allowedRoles={['admin']}>
                 <Admin />
               </RequireAuth>
             }
@@ -205,7 +209,7 @@ export default function App() {
           <Route
             path="/assignee"
             element={
-              <RequireAuth user={user}>
+              <RequireAuth user={user} allowedRoles={['assignee', 'admin']}>
                 <AssigneeDashboard />
               </RequireAuth>
             }
