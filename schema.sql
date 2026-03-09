@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS users ( -- Login
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(255) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
+    role ENUM('user', 'assignee', 'admin') DEFAULT 'user',
     password_hash TEXT,
     google_sub VARCHAR(255) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
