@@ -58,13 +58,20 @@ export default function AssigneeDashboard() {
     });
 
     if (res.ok) {
+
       alert("Ticket successfully reassigned.");
-      setSelectedTicket(null);
+
+      const [historyRes, ticketsRes] = await Promise.all([
+        fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/history`),
+        fetch(`http://localhost:3000/api/assignee/${user.id}/tickets`)
+      ]);
+
+      const historyData = await historyRes.json();
+      const ticketsData = await ticketsRes.json();
+
+      setHistory(historyData);
+      setTickets(ticketsData);
       setSelectedAssignees([]);
-      // Refresh your list here...
-      const response = await fetch(`http://localhost:3000/api/assignee/${user.id}/tickets`);
-      const data = await response.json();
-      setTickets(data);
     }
   };
 
@@ -80,6 +87,7 @@ export default function AssigneeDashboard() {
   const handleManage = async (ticket) => {
     setSelectedTicket(ticket);
     setNewStatus(ticket.status);
+    setSelectedAssignees(ticket.assignees?.map(a => a.id) || []); 
     const [historyRes, commentsRes] = await Promise.all([
       fetch(`http://localhost:3000/api/tickets/${ticket.id}/history`),
       fetch(`http://localhost:3000/api/tickets/${ticket.id}/comments?scope=staff`)

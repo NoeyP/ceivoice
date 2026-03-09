@@ -824,6 +824,8 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
 
   const { id } = req.params;
   const { new_assignee_ids, changed_by } = req.body;
+  console.log("Incoming assignee IDs:", new_assignee_ids);
+  console.log("Type:", typeof new_assignee_ids);
 
   try {
 
@@ -844,18 +846,18 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
 
     if (new_assignee_ids && new_assignee_ids.length > 0) {
 
-      const values = new_assignee_ids.map((uid) => [id, uid]);
+      for (const uid of new_assignee_ids) {
+        await db.execute(
+          'INSERT INTO ticket_assignees (ticket_id, user_id) VALUES (?, ?)',
+          [id, uid]
+        );
+      }
 
-      await db.query(
-        'INSERT INTO ticket_assignees (ticket_id, user_id) VALUES ?',
-        [values]
-      );
-
-      const [newRows] = await db.execute(
-        'SELECT username FROM users WHERE id IN (?)',
+      const [newRows] = await db.query(
+        `SELECT username FROM users WHERE id IN (?)`,
         [new_assignee_ids]
       );
-
+      
       newNames = newRows.map(u => u.username).join(", ");
 
       await db.execute(
