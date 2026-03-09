@@ -24,6 +24,7 @@ function buildCommentTree(comments = []) {
 
 export default function Admin() {
   const [tickets, setTickets] = useState([]);
+  const [users, setUsers] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [activeFilter, setActiveFilter] = useState("Draft");
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -36,94 +37,159 @@ export default function Admin() {
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
 
-  useEffect(() => {
-    const fetchTickets = async () => {
-      try {
-        const response = await fetch("http://localhost:3000/api/admin/tickets");
-        if (response.ok) {
-          const data = await response.json();
-          setTickets(data);
-        } else {
-          setTickets([
-            {
-              id: 1,
-              tracking_id: "TIC-8888",
-              title: "Sample Draft Ticket",
-              ai_analysis: "This is a test summary for EP03 review.",
-              suggested_resolution: "1. Check DB\n2. Verify API",
-              status: "Draft",
-              user_email: "test@example.com",
-              original_message: "The system is down!",
-            },
-          ]);
-        }
-      } catch (error) {
-        console.error("Fetch error:", error);
-      }
-    };
+// =============================
+// API FETCH FUNCTIONS
+// =============================
+
+const fetchUsers = async () => {
+  try {
+    const res = await fetch("http://localhost:3000/api/users");
+
+    if (res.ok) {
+      const data = await res.json();
+      setUsers(data);
+    }
+  } catch (err) {
+    console.error("User fetch error:", err);
+  }
+};
+
+const fetchTickets = async () => {
+  try {
+    const response = await fetch("http://localhost:3000/api/admin/tickets");
+
+    if (response.ok) {
+      const data = await response.json();
+      setTickets(data);
+    }
+  } catch (error) {
+    console.error("Fetch error:", error);
+  }
+};
+
+
+// =============================
+// INITIAL LOAD
+// =============================
+
+useEffect(() => {
+  fetchUsers();
+  fetchTickets();
+
+  const interval = setInterval(() => {
     fetchTickets();
-  }, []);
+  }, 5000); // refresh every 5 seconds
 
-  const filteredTickets = useMemo(() => {
-    if (activeFilter === "All") return tickets;
-    return tickets.filter((ticket) => ticket.status === activeFilter);
-  }, [tickets, activeFilter]);
+  return () => clearInterval(interval);
 
-  const draftCount = useMemo(
-    () => tickets.filter((ticket) => ticket.status === "Draft").length,
-    [tickets]
+}, []);
+
+
+// =============================
+// MEMOIZED VALUES
+// =============================
+
+const filteredTickets = useMemo(() => {
+  if (activeFilter === "All") return tickets;
+  return tickets.filter((ticket) => ticket.status === activeFilter);
+}, [tickets, activeFilter]);
+
+const draftCount = useMemo(() => {
+  return tickets.filter((ticket) => ticket.status === "Draft").length;
+}, [tickets]);
+
+const mergeEnabled = selectedIds.length >= 2;
+
+const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
+
+const participants =
+  selectedTicket?.participants || {
+    creator: null,
+    assignees: [],
+    followers: [],
+  };
+
+
+// =============================
+// HELPERS
+// =============================
+
+const participantLabel = (person, fallbackName = "Unknown") => {
+  if (!person) return fallbackName;
+
+  const name = person.name || person.username || fallbackName;
+  const email = person.email ? ` (${person.email})` : "";
+
+  return `${name}${email}`;
+};
+
+const toggleSelectTicket = (e, ticketId) => {
+  e.stopPropagation();
+
+  setSelectedIds((prev) =>
+    prev.includes(ticketId)
+      ? prev.filter((id) => id !== ticketId)
+      : [...prev, ticketId]
   );
+};
 
-  const mergeEnabled = selectedIds.length >= 2;
-  const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
-  const participants = selectedTicket?.participants || { creator: null, assignees: [], followers: [] };
 
-  const participantLabel = (person, fallbackName = "Unknown") => {
-    if (!person) return fallbackName;
-    const name = person.name || person.username || fallbackName;
-    const email = person.email ? ` (${person.email})` : "";
-    return `${name}${email}`;
-  };
+// =============================
+// OPEN TICKET
+// =============================
 
-  const toggleSelectTicket = (e, ticketId) => {
-    e.stopPropagation();
-    setSelectedIds((prev) =>
-      prev.includes(ticketId) ? prev.filter((id) => id !== ticketId) : [...prev, ticketId]
+const openTicket = async (ticket) => {
+  setSelectedTicket(ticket);
+
+  setCommentDraft("");
+  setCommentVisibility("public");
+
+  setReplyDraft("");
+  setReplyVisibility("public");
+  setReplyTargetId(null);
+
+  try {
+    const res = await fetch(
+      `http://localhost:3000/api/tickets/${ticket.id}/comments?scope=staff`
     );
-  };
 
-  const openTicket = async (ticket) => {
-    setSelectedTicket(ticket);
-    setCommentDraft("");
-    setCommentVisibility("public");
-    setReplyDraft("");
-    setReplyVisibility("public");
-    setReplyTargetId(null);
-
-    try {
-      const res = await fetch(`http://localhost:3000/api/tickets/${ticket.id}/comments?scope=staff`);
-      if (res.ok) {
-        const data = await res.json();
-        setComments(data);
-      } else {
-        setComments([]);
-      }
-    } catch (error) {
-      console.error("Comment load error:", error);
+    if (res.ok) {
+      const data = await res.json();
+      setComments(data);
+    } else {
       setComments([]);
     }
-  };
+  } catch (error) {
+    console.error("Comment load error:", error);
+    setComments([]);
+  }
+};
 
-  const submitComment = async (rawMessage, parentId = null, visibility = "public") => {
-    if (!selectedTicket) return;
-    const message = String(rawMessage || "").trim();
-    if (!message) return;
 
-    setCommentSubmitting(true);
-    try {
-      const res = await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/comments`, {
+// =============================
+// SUBMIT COMMENT
+// =============================
+
+const submitComment = async (
+  rawMessage,
+  parentId = null,
+  visibility = "public"
+) => {
+  if (!selectedTicket) return;
+
+  const message = String(rawMessage || "").trim();
+  if (!message) return;
+
+  setCommentSubmitting(true);
+
+  try {
+    const res = await fetch(
+      `http://localhost:3000/api/tickets/${selectedTicket.id}/comments`,
+      {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           message,
           visibility,
@@ -131,32 +197,42 @@ export default function Admin() {
           actor_role: "admin",
           parent_id: parentId,
         }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Failed to post comment");
       }
+    );
 
-      const newComment = await res.json();
-      setComments((prev) => [...prev, newComment]);
-      if (parentId) {
-        setReplyDraft("");
-        setReplyVisibility("public");
-        setReplyTargetId(null);
-      } else {
-        setCommentDraft("");
-      }
-    } catch (error) {
-      alert(error.message || "Failed to post comment");
-    } finally {
-      setCommentSubmitting(false);
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.message || "Failed to post comment");
     }
-  };
 
-  const renderCommentNode = (node, depth = 0) => {
-    const INDENT = 20;
-    const badgeCls = node.visibility === "internal"
+    const newComment = await res.json();
+
+    setComments((prev) => [...prev, newComment]);
+
+    if (parentId) {
+      setReplyDraft("");
+      setReplyVisibility("public");
+      setReplyTargetId(null);
+    } else {
+      setCommentDraft("");
+    }
+  } catch (error) {
+    alert(error.message || "Failed to post comment");
+  } finally {
+    setCommentSubmitting(false);
+  }
+};
+
+
+// =============================
+// COMMENT TREE RENDER
+// =============================
+
+const renderCommentNode = (node, depth = 0) => {
+  const INDENT = 20;
+
+  const badgeCls =
+    node.visibility === "internal"
       ? "border-amber-200 bg-amber-100 text-amber-800"
       : "border-blue-200 bg-blue-50 text-blue-700";
 
@@ -274,6 +350,45 @@ export default function Admin() {
       console.error("Update error:", error);
     }
   };
+
+  // Refreshed Ticket Assignees and people involved
+  const fetchTicketDetails = async (ticketId) => {
+  try {
+    const res = await fetch(`http://localhost:3000/api/tickets/${ticketId}`);
+    const data = await res.json();
+
+    setSelectedTicket(data.ticket || data);
+
+  } catch (error) {
+    console.error("Failed to refresh ticket:", error);
+  }
+};
+
+  const handleAssignTicket = async (userId) => {
+  try {
+    await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/reassign`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        new_assignee_ids: [userId],
+        changed_by: 1
+      })
+    });
+
+    alert("Ticket assigned successfully");
+
+    // 👇 REFRESH TICKET DATA
+    await fetchTicketDetails(selectedTicket.id);
+    await fetchTickets(); // Refresh Ticket List
+
+  } catch (err) {
+    console.error("Assignment failed:", err);
+  }
+};
+
+  
 
   return (
     <div className="min-h-screen bg-white">
@@ -433,6 +548,36 @@ export default function Admin() {
                         value={selectedTicket.user_email || ""}
                       />
                     </div>
+                  </div>
+
+                  {/* Assign Ticket */}
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">
+                      Assign Ticket
+                    </label>
+
+                    <select
+                      className="w-full rounded-lg border border-slate-300 p-2.5"
+                      onChange={(e) => {
+                        const userId = e.target.value;
+                        if (userId) handleAssignTicket(userId);
+                      }}
+                      value={selectedTicket.assignee_id || ""}
+                    >
+                      <option value="" disabled>
+                        Select user...
+                      </option>
+
+                      {users.length === 0 ? (
+                        <option disabled>No users available</option>
+                      ) : (
+                        users.map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.username}
+                          </option>
+                        ))
+                      )}
+                    </select>
                   </div>
 
                   <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">

@@ -11,7 +11,16 @@ const crypto = require("crypto");
 const { OAuth2Client } = require('google-auth-library');
 
 
-const VALID_STATUSES = ['New', 'Assigned', 'Solving', 'Solved', 'Failed', 'Renew'];
+const VALID_STATUSES = [
+  'New',
+  'Assigned',
+  'In Review',
+  'Solving',
+  'Solved',
+  'Rejected',
+  'Failed',
+  'Renew'
+];
 const STAFF_ROLES = new Set(['assignee', 'admin']);
 const ALL_COMMENT_ROLES = new Set(['user', 'creator', 'follower', 'assignee', 'admin']);
 let hasParentCommentIdColumnCache = null;
@@ -837,7 +846,7 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
 
       const values = new_assignee_ids.map((uid) => [id, uid]);
 
-      await db.execute(
+      await db.query(
         'INSERT INTO ticket_assignees (ticket_id, user_id) VALUES ?',
         [values]
       );
@@ -867,7 +876,7 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
     res.json({ success: true });
 
   } catch (error) {
-    console.error("Reassignment failed:", error);
+    console.error("Reassignment failed:", error.message);
     res.status(500).json({ error: "Reassignment failed" });
   }
 });
@@ -1035,6 +1044,52 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
   } catch (error) {
     console.error("Comment error:", error);
     res.status(500).json({ success: false });
+  }
+});
+
+// Add Assign Ticket endpoints for frontend to call it.
+app.put("/tickets/:id/status", async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const { status } = req.body;
+
+    if (!VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ error: "Invalid ticket status" });
+    }
+
+    await db.execute(
+      "UPDATE tickets SET status = ? WHERE id = ?",
+      [status, ticketId]
+    );
+
+    res.json({ message: "Ticket status updated successfully" });
+
+  } catch (err) {
+    console.error("Error updating ticket status:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+//Assign assignee 
+app.post("/tickets/:id/assign", async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+
+    await db.execute(
+      "INSERT INTO ticket_assignees (ticket_id, user_id) VALUES (?, ?)",
+      [ticketId, user_id]
+    );
+
+    res.json({ message: "Ticket assigned successfully" });
+
+  } catch (error) {
+    console.error("Assign ticket error:", error);
+    res.status(500).json({ error: "Failed to assign ticket" });
   }
 });
 
