@@ -481,13 +481,6 @@ export default function Track() {
                   </div>
                 </div>
               </div>
-
-              <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-sm">
-                <h3 className="font-semibold text-lg">Need faster help?</h3>
-                <p className="text-white/85 mt-2 text-sm leading-relaxed">
-                  Add details (device, screenshots, steps) in a public comment to speed up resolution.
-                </p>
-              </div>
             </div>
 
             <div className="space-y-4 xl:col-span-8">
