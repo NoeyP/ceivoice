@@ -52,6 +52,17 @@ export default function Admin() {
   // API FETCH FUNCTIONS
   // =============================
 
+  const handleLast30Days = () => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - 29);
+    setDateRange([start, end]);
+  };
+
+  const handleAllTickets = () => {
+    setDateRange([null, null]);
+  };
+
   const [reportData, setReportData] = useState({
     statusBreakdown: [],
     categoryBreakdown: [],
@@ -658,6 +669,21 @@ export default function Admin() {
             placeholderText="Select a date range"
             className="rounded-lg border border-slate-300 p-2 text-sm focus:ring-2 focus:ring-slate-900"
           />
+
+          <button
+            onClick={handleAllTickets}
+            className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${!startDate ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+          >
+            All Tickets
+          </button>
+
+          <button
+            onClick={handleLast30Days}
+            className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200"
+          >
+            Last 30 Days
+          </button>
         </div>
 
         {/* Admin.jsx - Reporting Dashboard Section (EP06-ST003) */}
