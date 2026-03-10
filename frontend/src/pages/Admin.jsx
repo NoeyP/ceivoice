@@ -31,6 +31,7 @@ export default function Admin() {
   const [activeFilter, setActiveFilter] = useState("Draft");
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [comments, setComments] = useState([]);
+  const [history, setHistory] = useState([]);
   const [commentDraft, setCommentDraft] = useState("");
   const [commentVisibility, setCommentVisibility] = useState("public");
   const [replyDraft, setReplyDraft] = useState("");

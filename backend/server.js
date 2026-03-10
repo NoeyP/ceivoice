@@ -1019,6 +1019,46 @@ app.post("/api/admin/tickets/unlink", async (req, res) => {
 // EP04 FEATURES
 // ------------------------------
 
+app.get('/api/assignee/:userId/metrics', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const [[currentAssignedRow]] = await db.execute(
+      `
+        SELECT COUNT(DISTINCT t.id) AS currentAssignedCount
+        FROM tickets t
+        JOIN ticket_assignees ta ON t.id = ta.ticket_id
+        WHERE ta.user_id = ?
+          AND t.status NOT IN ('Solved', 'Failed')
+      `,
+      [userId]
+    );
+
+    const [[last30DaysRow]] = await db.execute(
+      `
+        SELECT
+          COUNT(DISTINCT CASE WHEN h.new_status = 'Solved' THEN h.ticket_id END) AS solvedLast30Days,
+          COUNT(DISTINCT CASE WHEN h.new_status = 'Failed' THEN h.ticket_id END) AS failedLast30Days
+        FROM ticket_history h
+        WHERE h.changed_by = ?
+          AND h.change_type = 'status'
+          AND h.new_status IN ('Solved', 'Failed')
+          AND h.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+      `,
+      [userId]
+    );
+
+    res.json({
+      currentAssignedCount: Number(currentAssignedRow?.currentAssignedCount || 0),
+      solvedLast30Days: Number(last30DaysRow?.solvedLast30Days || 0),
+      failedLast30Days: Number(last30DaysRow?.failedLast30Days || 0),
+    });
+  } catch (error) {
+    console.error("Assignee metrics fetch error:", error);
+    res.status(500).json({ error: "Failed to load assignee metrics" });
+  }
+});
+
 // Staff workload
 app.get('/api/assignee/:userId/tickets', async (req, res) => {
   const { userId } = req.params;

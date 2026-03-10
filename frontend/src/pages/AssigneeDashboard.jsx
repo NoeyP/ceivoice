@@ -22,6 +22,11 @@ function buildCommentTree(comments = []) {
 
 export default function AssigneeDashboard() {
   const [tickets, setTickets] = useState([]);
+  const [metrics, setMetrics] = useState({
+    currentAssignedCount: 0,
+    solvedLast30Days: 0,
+    failedLast30Days: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [newStatus, setNewStatus] = useState("");
@@ -40,6 +45,23 @@ export default function AssigneeDashboard() {
 
 
   const [selectedAssignees, setSelectedAssignees] = useState([]);
+  const user = JSON.parse(localStorage.getItem("ceivoice_user"));
+
+  const fetchMetrics = async () => {
+    const response = await fetch(`http://localhost:3000/api/assignee/${user.id}/metrics`);
+    const data = await response.json();
+    setMetrics({
+      currentAssignedCount: data.currentAssignedCount || 0,
+      solvedLast30Days: data.solvedLast30Days || 0,
+      failedLast30Days: data.failedLast30Days || 0,
+    });
+  };
+
+  const fetchMyWorkload = async () => {
+    const response = await fetch(`http://localhost:3000/api/assignee/${user.id}/tickets`);
+    const data = await response.json();
+    setTickets(data);
+  };
 
   const toggleAssignee = (userId) => {
     setSelectedAssignees(prev =>
@@ -71,6 +93,7 @@ export default function AssigneeDashboard() {
 
       setHistory(historyData);
       setTickets(ticketsData);
+      await fetchMetrics();
       setSelectedAssignees([]);
     }
   };
@@ -169,9 +192,7 @@ export default function AssigneeDashboard() {
         }),
       });
       if (res.ok) {
-        const response = await fetch(`http://localhost:3000/api/assignee/${user.id}/tickets`);
-        const data = await response.json();
-        setTickets(data);
+        await Promise.all([fetchMyWorkload(), fetchMetrics()]);
 
         setSelectedTicket(null);
         setResolutionComment("");
@@ -185,23 +206,17 @@ export default function AssigneeDashboard() {
     }
   };
 
-  // Get current logged-in user from localStorage
-  const user = JSON.parse(localStorage.getItem("ceivoice_user"));
-
   useEffect(() => {
-    const fetchMyWorkload = async () => {
+    const loadDashboard = async () => {
       try {
-        // You'll need to create this endpoint in server.js
-        const response = await fetch(`http://localhost:3000/api/assignee/${user.id}/tickets`);
-        const data = await response.json();
-        setTickets(data);
+        await Promise.all([fetchMyWorkload(), fetchMetrics()]);
       } catch (error) {
-        console.error("Error fetching workload:", error);
+        console.error("Error fetching assignee dashboard:", error);
       } finally {
         setLoading(false);
       }
     };
-    if (user?.id) fetchMyWorkload();
+    if (user?.id) loadDashboard();
   }, [user?.id]);
 
   // EP04-ST001: Sortable by urgency (Deadline)
@@ -308,6 +323,21 @@ export default function AssigneeDashboard() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 sm:px-6">
       <h1 className="text-3xl font-bold mb-6">My Workload</h1>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Currently Assigned</p>
+          <p className="mt-3 text-4xl font-bold text-slate-950">{metrics.currentAssignedCount}</p>
+        </div>
+        <div className="rounded-xl border border-green-200 bg-green-50 p-5 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-wide text-green-700">Solved in Last 30 Days</p>
+          <p className="mt-3 text-4xl font-bold text-green-900">{metrics.solvedLast30Days}</p>
+        </div>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-wide text-red-700">Failed in Last 30 Days</p>
+          <p className="mt-3 text-4xl font-bold text-red-900">{metrics.failedLast30Days}</p>
+        </div>
+      </div>
 
       <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
         <div className="divide-y md:hidden">
