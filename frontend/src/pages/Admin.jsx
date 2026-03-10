@@ -681,12 +681,12 @@ export default function Admin() {
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="flex items-center justify-between border-b pb-4">
+                <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900">Review Ticket</h2>
                     <p className="text-sm text-slate-500">{selectedTicket.tracking_id}</p>
                   </div>
-                  <span className="rounded bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">
+                  <span className="inline-flex w-fit rounded bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">
                     {selectedTicket.status?.toUpperCase()}
                   </span>
                 </div>
@@ -726,7 +726,7 @@ export default function Admin() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="mb-1 block text-sm font-semibold text-slate-700">
                         Deadline
@@ -864,7 +864,8 @@ export default function Admin() {
                     ) : (
                       <ul className="mt-2 space-y-1">
                         {mergedRequests.map((req) => (
-                          <li key={req.id} className="flex justify-between text-sm text-slate-700">
+
+                          <li key={req.id} className="flex flex-col gap-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
 
                             <span>
                               {req.tracking_id} – {req.title}
@@ -883,7 +884,7 @@ export default function Admin() {
                     )}
                   </div>
 
-                  <div className="flex gap-4 border-t pt-4">
+                  <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:gap-4">
                     <button
                       onClick={() => handleUpdateTicket("Draft")}
                       className="flex-1 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"

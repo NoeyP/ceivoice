@@ -50,7 +50,8 @@ export default function App() {
     <div className={`min-h-screen ${isAdminRoute ? "bg-slate-50" : "bg-white"}`}>
       {!isAdminRoute ? (
         <nav className="bg-white border-b border-slate-200/80">
-          <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <Link to="/" className="flex items-center gap-3">
               <img
                 src={logo}
@@ -60,7 +61,7 @@ export default function App() {
               <h1 className="text-2xl font-bold tracking-tight">CEiVoice</h1>
             </Link>
 
-            <div className="flex items-center gap-6">
+            <div className="flex flex-wrap items-center gap-3 sm:justify-end sm:gap-6">
               {user ? (
                 <>
                   <Link
@@ -98,7 +99,7 @@ export default function App() {
                   <div className="relative" ref={menuRef}>
                     <button
                       onClick={() => setMenuOpen(!menuOpen)}
-                      className="text-sm font-medium text-slate-700 hover:text-slate-900"
+                      className="text-left text-sm font-medium text-slate-700 hover:text-slate-900"
                     >
                       login as {user.username}
                     </button>
@@ -117,11 +118,12 @@ export default function App() {
                 </>
               ) : null}
             </div>
+            </div>
           </div>
         </nav>
       ) : null}
 
-      <main className={isAdminRoute ? "" : "max-w-6xl mx-auto px-6 py-20 md:py-28"}>
+      <main className={isAdminRoute ? "" : "max-w-6xl mx-auto px-4 py-12 sm:px-6 md:py-20 lg:py-28"}>
         <Routes>
           <Route
             path="/"
