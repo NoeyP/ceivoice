@@ -297,6 +297,31 @@ app.post('/api/tickets', async (req, res) => {
       ]
     );
     console.log("💾 Ticket saved as DRAFT with ID:", result.insertId);
+    // --- PART 2.5: AI ASSIGNEE RECOMMENDATION (EP02-ST006) ---
+    try {
+
+      const [assignees] = await db.execute(
+        `SELECT id FROM users 
+        WHERE role = 'assignee' 
+        AND status = 'active'
+        AND scope = ?
+        LIMIT 2`,
+        [finalCategory]
+      );
+
+      for (const a of assignees) {
+        await db.execute(
+          `INSERT INTO ticket_assignees (ticket_id, user_id)
+          VALUES (?, ?)`,
+          [result.insertId, a.id]
+        );
+      }
+
+      console.log("🤖 AI assigned assignees:", assignees.length);
+
+    } catch (assignError) {
+      console.error("AI assignment failed:", assignError.message);
+    }
 
     // --- PART 3: AUTOMATED EMAIL ---
     try {
@@ -816,6 +841,34 @@ app.post('/api/admin/tickets/merge', async (req, res) => {
   }
 
   try {
+    // 🔹 Ensure base ticket creator is also a follower
+    const [[baseTicket]] = await db.execute(
+      `SELECT user_id, user_email FROM tickets WHERE id = ?`,
+      [draft_ticket_id]
+    );
+
+    let creatorId = baseTicket?.user_id;
+
+    // If user_id is missing, find it using email
+    if (!creatorId && baseTicket?.user_email) {
+      const [[user]] = await db.execute(
+        `SELECT id FROM users WHERE email = ?`,
+        [baseTicket.user_email]
+      );
+
+      if (user) {
+        creatorId = user.id;
+      }
+    }
+
+    // Add creator as follower
+    if (creatorId) {
+      await db.execute(
+        `INSERT IGNORE INTO ticket_followers (ticket_id, user_id)
+        VALUES (?, ?)`,
+        [draft_ticket_id, creatorId]
+      );
+    }
 
     for (const ticketId of ticket_ids) {
        if (ticketId === draft_ticket_id) {
@@ -995,7 +1048,7 @@ app.get('/api/assignee/:userId/tickets', async (req, res) => {
 });
 
 
-// Ticket history
+// Read Ticket history
 app.get('/api/tickets/:id/history', async (req, res) => {
   const { id } = req.params;
 

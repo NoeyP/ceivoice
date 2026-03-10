@@ -41,6 +41,7 @@ export default function Admin() {
   const [mergedCount, setMergedCount] = useState(0);
   const [linkedRequests, setLinkedRequests] = useState([]);
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
+  const [history, setHistory] = useState([]);
 
 // =============================
 // API FETCH FUNCTIONS
@@ -193,7 +194,26 @@ const openTicket = async (ticket) => {
     setMergedRequests([]);
     setMergedCount(0);
   }
-};
+
+  // 🔥 Load audit history
+  try {
+    const res = await fetch(
+      `http://localhost:3000/api/tickets/${ticket.id}/history`
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      setHistory(data);
+    } else {
+      setHistory([]);
+    }
+
+  } catch (error) {
+    console.error("History load error:", error);
+    setHistory([]);
+  }
+
+  };
 
 
 // =============================
@@ -796,6 +816,34 @@ const renderCommentNode = (node, depth = 0) => {
                   <div className="mt-4 rounded-lg border bg-slate-50 p-3">
                     <p className="mb-1 text-[10px] font-bold uppercase text-slate-400">Original User Message</p>
                     <p className="text-sm italic text-slate-600">"{selectedTicket.original_message || "No content"}"</p>
+                  </div>
+                  {/* Audit Trail */}
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700">
+                      Audit Trail
+                    </h3>
+
+                    {history.length === 0 ? (
+                      <p className="mt-2 text-sm italic text-slate-500">
+                        No history yet
+                      </p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {history.map((h) => (
+                          <li key={h.id} className="text-sm text-slate-700">
+                            <span className="font-semibold">
+                              {h.old_status} → {h.new_status}
+                            </span>
+                            <br />
+                            by {h.changed_by_name || "System"}
+                            <br />
+                            <span className="text-xs text-slate-500">
+                              {new Date(h.created_at).toLocaleString()}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   {/* Linked Requests */}
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
