@@ -618,8 +618,8 @@ export default function Admin() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          new_assignee_ids: [userId],
-          changed_by: 1
+          new_assignee_ids: [Number(userId)],
+          changed_by: user?.id || null
         })
       });
 

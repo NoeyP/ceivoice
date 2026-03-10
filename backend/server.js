@@ -219,6 +219,37 @@ CEI Support Team
   }
 }
 
+async function sendAssignmentEmail(email, trackingId, ticketTitle, changedByName) {
+  try {
+    const mailOptions = {
+      from: `"CEI Support" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Ticket assigned: ${trackingId}`,
+      text: `
+Hello,
+
+A ticket has been assigned to you.
+
+Ticket ID: ${trackingId}
+Title: ${ticketTitle || 'Untitled ticket'}
+Assigned by: ${changedByName || 'System'}
+
+You can review the ticket here:
+http://localhost:5173/assignee
+
+Best regards,
+CEI Support Team
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    console.log("Assignment email sent");
+  } catch (error) {
+    console.error("Assignment email failed:", error.message);
+  }
+}
+
 // Ai and email receipt logic
 app.post('/api/tickets', async (req, res) => {
   // 1. Destructure all possible fields from the frontend
@@ -994,7 +1025,7 @@ app.get('/api/users', async (req, res) => {
     const [rows] = await db.execute(`
       SELECT id, username
       FROM users
-      WHERE role IN ('assignee', 'admin')
+      WHERE role = 'assignee'
       ORDER BY username ASC
     `);
 
@@ -1298,6 +1329,17 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
   console.log("Type:", typeof new_assignee_ids);
 
   try {
+    const [[ticketRow]] = await db.execute(
+      `SELECT tracking_id, title FROM tickets WHERE id = ? LIMIT 1`,
+      [id]
+    );
+
+    const changedByRow = changed_by
+      ? (await db.execute(
+        `SELECT username FROM users WHERE id = ? LIMIT 1`,
+        [changed_by]
+      ))[0][0]
+      : null;
 
     const [oldAssignees] = await db.execute(`
       SELECT u.username FROM users u
@@ -1313,6 +1355,7 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
     await db.execute('DELETE FROM ticket_assignees WHERE ticket_id = ?', [id]);
 
     let newNames = "None";
+    let newAssigneeEmails = [];
 
     if (new_assignee_ids && new_assignee_ids.length > 0) {
 
@@ -1324,11 +1367,12 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
       }
 
       const [newRows] = await db.query(
-        `SELECT username FROM users WHERE id IN (?)`,
+        `SELECT username, email FROM users WHERE id IN (?)`,
         [new_assignee_ids]
       );
 
       newNames = newRows.map(u => u.username).join(", ");
+      newAssigneeEmails = newRows.map((u) => u.email).filter(Boolean);
 
       await db.execute(
         'UPDATE tickets SET status = "Assigned" WHERE id = ?',
@@ -1344,6 +1388,15 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
        VALUES (?, ?, ?, ?, ?)`,
       [id, changed_by, 'assignment', 'Assigned', historyMessage]
     );
+
+    for (const email of [...new Set(newAssigneeEmails)]) {
+      await sendAssignmentEmail(
+        email,
+        ticketRow?.tracking_id,
+        ticketRow?.title,
+        changedByRow?.username
+      );
+    }
 
     res.json({ success: true });
 
