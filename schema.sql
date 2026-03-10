@@ -81,3 +81,14 @@ CREATE TABLE IF NOT EXISTS merged_requests (
     FOREIGN KEY (draft_ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
     FOREIGN KEY (original_ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE IF NOT EXISTS ticket_followers (
+    ticket_id INT NOT NULL,
+    user_id INT NOT NULL,
+
+    PRIMARY KEY (ticket_id, user_id),
+
+    FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

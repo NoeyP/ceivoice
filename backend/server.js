@@ -674,20 +674,19 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
       ]
     );
 
-    if (!deadline && oldStatus === 'Draft' && status === 'Open') {
-      const threeDaysFromNow = new Date();
-      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+    // ST006: Add original request creators as followers when Draft is submitted
+    if (oldStatus === 'Draft' && status === 'New') {
 
-      const autoDeadline = threeDaysFromNow
-        .toISOString()
-        .slice(0, 19)
-        .replace("T", " ");
+      await db.execute(`
+        INSERT IGNORE INTO ticket_followers (ticket_id, user_id)
+        SELECT ?, u.id
+        FROM merged_requests m
+        JOIN tickets t ON m.original_ticket_id = t.id
+        JOIN users u ON LOWER(u.email) = LOWER(t.user_email)
+        WHERE m.draft_ticket_id = ?
+      `, [id, id]);
 
-      await db.execute(
-        'UPDATE tickets SET deadline = ? WHERE id = ?',
-        [autoDeadline, id]
-      );
-    }
+}
 
     // 3️ Log history (EP04 Audit Trail)
     await db.execute(
@@ -706,10 +705,29 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
       );
     }
 
-    // 5️ Send email notification (EP01-ST005)
-    if (['Open', 'Solved', 'Failed'].includes(status)) {
+    // 5️ Send email notification to creator + followers
+    if (['New', 'Solved', 'Failed'].includes(status)) {
       try {
-        await sendNotificationEmail(userEmail, status, trackingId);
+
+        // Get follower emails
+        const [followers] = await db.execute(`
+          SELECT u.email
+          FROM ticket_followers tf
+          JOIN users u ON tf.user_id = u.id
+          WHERE tf.ticket_id = ?
+        `, [id]);
+
+        // Combine creator + followers
+        const emails = [userEmail, ...followers.map(f => f.email)];
+
+        // Remove duplicates
+        const uniqueEmails = [...new Set(emails)];
+
+        // Send email to everyone
+        for (const email of uniqueEmails) {
+          await sendNotificationEmail(email, status, trackingId);
+        }
+
       } catch (mailError) {
         console.error("Email notification failed:", mailError.message);
       }
