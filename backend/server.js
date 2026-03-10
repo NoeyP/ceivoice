@@ -394,6 +394,10 @@ app.post('/api/tickets', async (req, res) => {
 app.post("/api/register", (req, res) => {
   const { username, email, password } = req.body || {};
 
+  if (!password || String(password).length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters long." });
+  }
+
   if (!username || !email || !password) {
     return res.status(400).json({ error: "Username, email, and password are required." });
   }

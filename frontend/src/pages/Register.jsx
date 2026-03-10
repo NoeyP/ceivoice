@@ -23,6 +23,12 @@ export default function Register() {
       setError("Please fill in all fields.");
       return;
     }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -101,6 +107,7 @@ export default function Register() {
           <input
             required
             type="password"
+            minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Create a password..."
@@ -115,6 +122,7 @@ export default function Register() {
           <input
             required
             type="password"
+            minLength={6}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Type it again..."
