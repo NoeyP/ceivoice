@@ -23,10 +23,11 @@ export default function Submit() {
     e.preventDefault();
     setLoading(true);
     try {
+      const storedUser = JSON.parse(localStorage.getItem('ceivoice_user') || 'null');
       const response = await fetch('http://localhost:3000/api/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, message }),
+        body: JSON.stringify({ email, message, userId: storedUser?.id || null }),
       });
       const data = await response.json();
       if (response.ok) {

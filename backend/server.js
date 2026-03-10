@@ -222,7 +222,7 @@ CEI Support Team
 // Ai and email receipt logic
 app.post('/api/tickets', async (req, res) => {
   // 1. Destructure all possible fields from the frontend
-  const { title, description, message, email, category } = req.body;
+  const { title, description, message, email, category, userId } = req.body;
 
   // 2. Pick the one that isn't empty (The "Whole Family" fallback)
   const finalDescription = description || message || "No content provided";
@@ -287,7 +287,7 @@ app.post('/api/tickets', async (req, res) => {
 
     // --- PART 2: DATABASE SAVE (Promise-based) ---
     const [result] = await db.execute(
-      'INSERT INTO tickets (tracking_id, title, category, status, user_email, ai_analysis, original_message, suggested_resolution) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO tickets (tracking_id, title, category, status, user_email, ai_analysis, original_message, suggested_resolution, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         trackingIdStr,
         finalTitle,
@@ -296,7 +296,8 @@ app.post('/api/tickets', async (req, res) => {
         finalEmail,
         aiSummary, // Ensure this is a string for the DB
         finalDescription,
-        suggestedSolution  // AI's suggested steps from ST005
+        suggestedSolution,  // AI's suggested steps from ST005
+        userId || null
       ]
     );
     console.log("💾 Ticket saved as DRAFT with ID:", result.insertId);
@@ -531,6 +532,179 @@ transporter.verify(function (error, success) {
 });
 
 // Tickets tracking system + Commenting
+app.get('/api/my-tickets', async (req, res) => {
+  const { userId, email, role } = req.query;
+
+  if (!role) {
+    return res.status(400).json({ message: "role is required" });
+  }
+
+  if (role !== 'admin' && !userId && !email) {
+    return res.status(400).json({ message: "userId or email is required" });
+  }
+
+  try {
+    let rows;
+
+    if (role === 'admin') {
+      [rows] = await db.execute(
+        `SELECT
+          id,
+          tracking_id AS trackingId,
+          title,
+          status,
+          category,
+          created_at AS createdAt
+        FROM tickets
+        ORDER BY created_at DESC`
+      );
+    } else if (role === 'assignee') {
+      [rows] = await db.execute(
+        `SELECT DISTINCT
+          t.id,
+          t.tracking_id AS trackingId,
+          t.title,
+          t.status,
+          t.category,
+          t.created_at AS createdAt
+        FROM tickets t
+        JOIN ticket_assignees ta ON ta.ticket_id = t.id
+        WHERE ta.user_id = ?
+        ORDER BY t.created_at DESC`,
+        [userId || null]
+      );
+    } else {
+      [rows] = await db.execute(
+        `SELECT
+          id,
+          tracking_id AS trackingId,
+          title,
+          status,
+          category,
+          created_at AS createdAt
+        FROM tickets
+        WHERE (? IS NOT NULL AND user_id = ?)
+           OR (? IS NOT NULL AND LOWER(user_email) = LOWER(?))
+        ORDER BY created_at DESC`,
+        [userId || null, userId || null, email || null, email || null]
+      );
+    }
+
+    res.json(rows);
+  } catch (error) {
+    console.error("Owned ticket list fetch error:", error);
+    res.status(500).json({ message: "Failed to load your tickets" });
+  }
+});
+
+app.get('/api/my-tickets/:trackingId', async (req, res) => {
+  const { trackingId } = req.params;
+  const { userId, email, role } = req.query;
+
+  if (!role) {
+    return res.status(400).json({ message: "role is required" });
+  }
+
+  if (role !== 'admin' && !userId && !email) {
+    return res.status(400).json({ message: "userId or email is required" });
+  }
+
+  try {
+    let tickets;
+
+    if (role === 'admin') {
+      [tickets] = await db.execute(
+        `SELECT
+          id,
+          tracking_id AS trackingId,
+          title,
+          category,
+          status,
+          user_email AS userEmail,
+          ai_analysis,
+          deadline,
+          created_at AS createdAt
+        FROM tickets
+        WHERE tracking_id = ?`,
+        [trackingId]
+      );
+    } else if (role === 'assignee') {
+      [tickets] = await db.execute(
+        `SELECT DISTINCT
+          t.id,
+          t.tracking_id AS trackingId,
+          t.title,
+          t.category,
+          t.status,
+          t.user_email AS userEmail,
+          t.ai_analysis,
+          t.deadline,
+          t.created_at AS createdAt
+        FROM tickets t
+        JOIN ticket_assignees ta ON ta.ticket_id = t.id
+        WHERE t.tracking_id = ?
+          AND ta.user_id = ?`,
+        [trackingId, userId || null]
+      );
+    } else {
+      [tickets] = await db.execute(
+        `SELECT
+          id,
+          tracking_id AS trackingId,
+          title,
+          category,
+          status,
+          user_email AS userEmail,
+          ai_analysis,
+          deadline,
+          created_at AS createdAt
+        FROM tickets
+        WHERE tracking_id = ?
+          AND (
+            (? IS NOT NULL AND user_id = ?)
+            OR (? IS NOT NULL AND LOWER(user_email) = LOWER(?))
+          )`,
+        [trackingId, userId || null, userId || null, email || null, email || null]
+      );
+    }
+
+    if (tickets.length === 0) {
+      return res.status(404).json({ message: "Ticket not found" });
+    }
+
+    const ticket = tickets[0];
+    const supportsReplies = await hasParentCommentIdColumn();
+    const parentColumnSelect = supportsReplies
+      ? "c.parent_comment_id AS parentId,"
+      : "NULL AS parentId,";
+
+    const [comments] = await db.execute(
+      `SELECT
+        c.id,
+        ${parentColumnSelect}
+        c.message,
+        c.visibility,
+        c.created_at AS createdAt,
+        COALESCE(u.username, 'User') AS author
+      FROM ticket_comments c
+      LEFT JOIN users u ON c.user_id = u.id
+      WHERE c.ticket_id = ?
+        AND c.visibility = 'public'
+      ORDER BY c.created_at ASC`,
+      [ticket.id]
+    );
+
+    ticket.comments = comments;
+    ticket.publicComments = comments;
+    ticket.participants = await getTicketParticipants(ticket.id, ticket.userEmail);
+
+    res.json(ticket);
+  } catch (error) {
+    console.error("Owned ticket fetch error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 app.get('/api/tickets/public/:trackingId', async (req, res) => {
 
   const { trackingId } = req.params;

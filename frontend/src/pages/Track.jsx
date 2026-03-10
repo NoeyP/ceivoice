@@ -84,12 +84,13 @@ export default function Track() {
   const [history, setHistory] = useState([]);
 
   const initialTid = params.trackingId || searchParams.get("tid") || "";
-
-  const [inputTid, setInputTid] = useState(initialTid);
+  const [ownedTickets, setOwnedTickets] = useState([]);
+  const [selectedTid, setSelectedTid] = useState(initialTid);
   const [activeTid, setActiveTid] = useState(initialTid);
 
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
   const [err, setErr] = useState("");
 
   const [comment, setComment] = useState("");
@@ -99,12 +100,48 @@ export default function Track() {
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
   const commentTree = useMemo(() => buildCommentTree(ticket?.comments || []), [ticket?.comments]);
   const participants = ticket?.participants || { creator: null, assignees: [], followers: [] };
+  const trackingScopeLabel = user?.role === "admin"
+    ? "all tickets"
+    : user?.role === "assignee"
+      ? "tickets assigned to you"
+      : "tickets you created";
 
   function participantLabel(person, fallbackName = "Unknown") {
     if (!person) return fallbackName;
     const name = person.name || person.username || fallbackName;
     const email = person.email ? ` (${person.email})` : "";
     return `${name}${email}`;
+  }
+
+  async function fetchOwnedTickets() {
+    if (!user?.id && !user?.email) return;
+
+    setTicketsLoading(true);
+    setErr("");
+
+    try {
+      const qs = new URLSearchParams();
+      if (user?.id) qs.set("userId", user.id);
+      if (user?.email) qs.set("email", user.email);
+      if (user?.role) qs.set("role", user.role);
+
+      const res = await fetch(`http://localhost:3000/api/my-tickets?${qs.toString()}`);
+      if (!res.ok) throw new Error("Failed to load your tickets");
+
+      const data = await res.json();
+      setOwnedTickets(data);
+
+      if (!initialTid && data.length > 0) {
+        const firstTrackingId = data[0].trackingId;
+        setSelectedTid(firstTrackingId);
+        setActiveTid(firstTrackingId);
+        navigate(`/track/${encodeURIComponent(firstTrackingId)}`, { replace: true });
+      }
+    } catch (e) {
+      setErr(e?.message || "Failed to load your tickets");
+    } finally {
+      setTicketsLoading(false);
+    }
   }
 
   async function fetchTicket(tid) {
@@ -121,7 +158,12 @@ export default function Track() {
         return;
       }
 
-      const res = await fetch(`http://localhost:3000/api/tickets/public/${encodeURIComponent(tid)}`);
+      const qs = new URLSearchParams();
+      if (user?.id) qs.set("userId", user.id);
+      if (user?.email) qs.set("email", user.email);
+      if (user?.role) qs.set("role", user.role);
+
+      const res = await fetch(`http://localhost:3000/api/my-tickets/${encodeURIComponent(tid)}?${qs.toString()}`);
       if (!res.ok) throw new Error("Ticket not found or server error");
       const data = await res.json();
       setTicket({
@@ -283,17 +325,20 @@ export default function Track() {
   }
 
   useEffect(() => {
-    if (initialTid) {
-      setActiveTid(initialTid);
-      fetchTicket(initialTid);
-    }
-  }, [initialTid]);
+    fetchOwnedTickets();
+  }, [user?.id, user?.email]);
+
+  useEffect(() => {
+    if (!initialTid) return;
+    setSelectedTid(initialTid);
+    setActiveTid(initialTid);
+    fetchTicket(initialTid);
+  }, [initialTid, user?.id, user?.email]);
 
   function onTrack() {
-    const tid = inputTid.trim();
-    if (!tid) return;
-    setActiveTid(tid);
-    navigate(`/track/${encodeURIComponent(tid)}`);
+    if (!selectedTid) return;
+    setActiveTid(selectedTid);
+    navigate(`/track/${encodeURIComponent(selectedTid)}`);
   }
 
   return (
@@ -301,20 +346,30 @@ export default function Track() {
       <div className="mb-5">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Track Ticket</h1>
         <p className="text-sm text-slate-500 mt-2">
-          Enter your tracking ID to view the latest ticket status and public updates.
+          Select from {trackingScopeLabel} to view the latest status and public updates.
         </p>
       </div>
 
       <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 md:p-5 shadow-sm">
         <div className="flex flex-col md:flex-row gap-3">
-          <input
-            value={inputTid}
-            onChange={(e) => setInputTid(e.target.value)}
-            placeholder="e.g. TIC-2026-000123"
-            className="w-full md:flex-1 border border-slate-200 rounded-xl px-4 py-3 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-          />
+          <select
+            value={selectedTid}
+            onChange={(e) => setSelectedTid(e.target.value)}
+            className="w-full md:flex-1 border border-slate-200 rounded-xl px-4 py-3 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            disabled={ticketsLoading || ownedTickets.length === 0}
+          >
+            <option value="">
+              {ticketsLoading ? "Loading tickets..." : ownedTickets.length === 0 ? "No tickets available for this account" : "Select a ticket"}
+            </option>
+            {ownedTickets.map((ownedTicket) => (
+              <option key={ownedTicket.id} value={ownedTicket.trackingId}>
+                {ownedTicket.trackingId} - {ownedTicket.title} - {formatDate(ownedTicket.createdAt)}
+              </option>
+            ))}
+          </select>
           <button
             onClick={onTrack}
+            disabled={!selectedTid}
             className="px-6 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition"
           >
             Track
