@@ -92,3 +92,19 @@ CREATE TABLE IF NOT EXISTS ticket_followers (
     FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE IF NOT EXISTS scope_tags (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(50) UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_scopes (
+  user_id INT NOT NULL,
+  scope_id INT NOT NULL,
+  PRIMARY KEY (user_id, scope_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (scope_id) REFERENCES scope_tags(id) ON DELETE CASCADE
+);
+
+INSERT IGNORE INTO scope_tags (name) VALUES ('IT'), ('HR'), ('Finance');

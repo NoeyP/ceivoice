@@ -276,6 +276,9 @@ app.post('/api/tickets', async (req, res) => {
         // This clears ST003:
         finalCategory = aiData.category || finalCategory;
 
+        const expertNames = await getExpertsForCategory(finalCategory);
+        suggestedSolution += `\n\n[Expert Recommendation]: Based on scope mapping, suggest assigning to: ${expertNames}`;
+
         console.log(`🤖 AI Result: [${finalCategory}] ${finalTitle}`);
       }
     } catch (aiError) {
@@ -1116,6 +1119,70 @@ app.patch('/api/admin/users/:id/role', async (req, res) => {
     res.status(500).json({ error: "Failed to update role" });
   }
 });
+
+
+// EP06-ST002
+app.get('/api/admin/tags', async (req, res) => {
+  try {
+    const [rows] = await db.execute('SELECT * FROM scope_tags');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch tags" });
+  }
+});
+
+app.get('/api/admin/user-scopes', async (req, res) => {
+  try {
+    const [rows] = await db.execute(`
+      SELECT user_id, scope_id
+      FROM user_scopes
+    `)
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch user scopes" });
+  }
+});
+
+app.post('/api/admin/users/toggle-scope', async (req, res) => {
+  const { userId, scopeId, active } = req.body;
+  try {
+    if (active) {
+      await db.execute('INSERT IGNORE INTO user_scopes (user_id, scope_id) VALUES (?, ?)', [userId, scopeId]);
+    } else {
+      await db.execute('DELETE FROM user_scopes WHERE user_id = ? AND scope_id = ?', [userId, scopeId]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update scope" });
+  }
+});
+
+async function getExpertsForCategory(category) {
+  const categoryMap = {
+    'Technical Support': 'IT',
+    'Billing/Finance': 'Finance',
+    'Account Access': 'IT',
+    'Feature Request': 'IT',
+    'General Inquiry': 'HR'
+  };
+
+  const targetTag = categoryMap[category] || 'IT';
+
+  try {
+    const [rows] = await db.execute(`
+      SELECT u.username
+      FROM users u
+      JOIN user_scopes us ON u.id = us.user_id
+      JOIN scope_tags st ON us.scope_id = st.id
+      WHERE st.name = ?`,
+      [targetTag]
+    );
+    return rows.length > 0 ? rows.map(r => r.username).join(', ') : "None assigned yet";
+  } catch (err) {
+    console.error("Scope lookup error:", err);
+    return "Error finding experts";
+  }
+}
 
 // Google Login/Registration
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);

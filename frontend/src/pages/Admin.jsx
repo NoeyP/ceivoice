@@ -42,10 +42,31 @@ export default function Admin() {
   const [linkedRequests, setLinkedRequests] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
+  const [availableTags, setAvailableTags] = useState([]);
+  const [userScopes, setUserScopes] = useState([]);
 
   // =============================
   // API FETCH FUNCTIONS
   // =============================
+
+  const fetchScopes = async () => {
+    const tagsRes = await fetch("http://localhost:3000/api/admin/tags");
+    const scopesRes = await fetch("http://localhost:3000/api/admin/user-scopes");
+    if (tagsRes.ok) setAvailableTags(await tagsRes.json())
+    if (scopesRes.ok) setUserScopes(await scopesRes.json());
+  };
+
+  const handleScopeToggle = async (userId, scopeId) => {
+    const isActive = userScopes.some(s => s.user_id === userId && s.scope_id === scopeId);
+
+    const res = await fetch("http://localhost:3000/api/admin/users/toggle-scope", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, scopeId, active: !isActive })
+    });
+
+    if (res.ok) fetchScopes();
+  }
 
   const fetchManagementUsers = async () => {
     try {
@@ -111,6 +132,7 @@ export default function Admin() {
     fetchUsers();
     fetchTickets();
     fetchManagementUsers();
+    fetchScopes();
 
     const interval = setInterval(() => {
       fetchTickets();
@@ -655,6 +677,21 @@ export default function Admin() {
                     <div className="min-w-0 flex-1">
                       <p className="font-bold text-slate-900 truncate">{u.username}</p>
                       <p className="text-[10px] uppercase font-bold text-slate-500">{u.role}</p>
+                      {u.role !== 'user' && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {availableTags.map(tag => (
+                            <label key={tag.id} className="flex items-center gap-1 text-[10px] font-medium text-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="h-3 w-3 rounded border-slate-300 accent-slate-900"
+                                checked={userScopes.some(s => s.user_id === u.id && s.scope_id === tag.id)}
+                                onChange={() => handleScopeToggle(u.id, tag.id)}
+                              />
+                              {tag.name}
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={() => handleRoleToggle(u.id, u.role)}
