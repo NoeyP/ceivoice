@@ -48,80 +48,78 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${isAdminRoute ? "bg-slate-50" : "bg-white"}`}>
-      {!isAdminRoute ? (
-        <nav className="bg-white border-b border-slate-200/80">
-          <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <Link to="/" className="flex items-center gap-3">
-              <img
-                src={logo}
-                alt="CEiVoice Logo"
-                className="h-10 w-10 object-contain"
-              />
-              <h1 className="text-2xl font-bold tracking-tight">CEiVoice</h1>
-            </Link>
+      <nav className="bg-white border-b border-slate-200/80">
+        <div className="max-w-6xl mx-auto px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <Link to="/" className="flex items-center gap-3">
+            <img
+              src={logo}
+              alt="CEiVoice Logo"
+              className="h-10 w-10 object-contain"
+            />
+            <h1 className="text-2xl font-bold tracking-tight">CEiVoice</h1>
+          </Link>
 
-            <div className="flex flex-wrap items-center gap-3 sm:justify-end sm:gap-6">
-              {user ? (
-                <>
+          <div className="flex flex-wrap items-center gap-3 sm:justify-end sm:gap-6">
+            {user ? (
+              <>
+                <Link
+                  to="/submit"
+                  className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
+                >
+                  Submit
+                </Link>
+
+                <Link
+                  to="/track"
+                  className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
+                >
+                  Track
+                </Link>
+
+                {(user.role === 'assignee' || user.role === 'admin') && (
                   <Link
-                    to="/submit"
+                    to="/assignee"
                     className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
                   >
-                    Submit
+                    Assignee Dashboard
                   </Link>
+                )}
 
+                {user.role === 'admin' && (
                   <Link
-                    to="/track"
+                    to="/admin"
                     className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
                   >
-                    Track
+                    Admin
                   </Link>
+                )}
 
-                  {(user.role === 'assignee' || user.role === 'admin') && (
-                    <Link
-                      to="/assignee"
-                      className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
-                    >
-                      Assignee Dashboard
-                    </Link>
+                <div className="relative" ref={menuRef}>
+                  <button
+                    onClick={() => setMenuOpen(!menuOpen)}
+                    className="text-left text-sm font-medium text-slate-700 hover:text-slate-900"
+                  >
+                    login as {user.username}
+                  </button>
+
+                  {menuOpen && (
+                    <div className="absolute right-0 mt-2 w-32 bg-white border rounded-lg shadow-md">
+                      <button
+                        onClick={handleLogout}
+                        className="block w-full text-left px-4 py-2 text-sm hover:bg-slate-100"
+                      >
+                        Logout
+                      </button>
+                    </div>
                   )}
-
-                  {user.role === 'admin' && (
-                    <Link
-                      to="/admin"
-                      className="text-base font-medium text-slate-700 hover:text-slate-950 transition-colors"
-                    >
-                      Admin
-                    </Link>
-                  )}
-
-                  <div className="relative" ref={menuRef}>
-                    <button
-                      onClick={() => setMenuOpen(!menuOpen)}
-                      className="text-left text-sm font-medium text-slate-700 hover:text-slate-900"
-                    >
-                      login as {user.username}
-                    </button>
-
-                    {menuOpen && (
-                      <div className="absolute right-0 mt-2 w-32 bg-white border rounded-lg shadow-md">
-                        <button
-                          onClick={handleLogout}
-                          className="block w-full text-left px-4 py-2 text-sm hover:bg-slate-100"
-                        >
-                          Logout
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : null}
-            </div>
-            </div>
+                </div>
+              </>
+            ) : null}
           </div>
-        </nav>
-      ) : null}
+          </div>
+        </div>
+      </nav>
 
       <main className={isAdminRoute ? "" : "max-w-6xl mx-auto px-4 py-12 sm:px-6 md:py-20 lg:py-28"}>
         <Routes>
