@@ -1277,6 +1277,53 @@ async function getExpertsForCategory(category) {
   }
 }
 
+
+// EP06-ST003
+app.get('/api/admin/reports/stats', async (req, res) => {
+  const { startDate, endDate } = req.query;
+
+  let dateFilter = "";
+  const params = [];
+  if (startDate && endDate) {
+    dateFilter = " WHERE created_at BETWEEN ? AND ?";
+    params.push(startDate, endDate);
+  }
+
+  try {
+    const [statusRows] = await db.execute(`
+      SELECT status, COUNT(*) as count 
+      FROM tickets
+      ${dateFilter}
+      GROUP BY status
+    `, params);
+
+    const [categoryRows] = await db.execute(`
+      SELECT category, COUNT(*) as count 
+      FROM tickets
+      ${dateFilter}
+      GROUP BY category
+    `, params);
+
+    const [avgRes] = await db.execute(`
+      SELECT AVG(TIMESTAMPDIFF(HOUR, t.created_at, th.created_at)) as avg_hours
+      FROM tickets t
+      JOIN ticket_history th ON t.id = th.ticket_id
+      WHERE th.new_status = 'Solved'
+      ${startDate && endDate ? " AND t.created_at BETWEEN ? AND ?" : ""}
+    `, startDate && endDate ? [startDate, endDate] : []);
+
+    res.json({
+      statusBreakdown: statusRows,
+      categoryBreakdown: categoryRows,
+      avgResolutionHours: Math.round(avgRes[0].avg_hours || 0),
+      totalTickets: statusRows.reduce((acc, curr) => acc + curr.count, 0)
+    });
+  } catch (err) {
+    console.error("Report error:", err);
+    res.status(500).json({ error: "Failed to generate report data" });
+  }
+});
+
 // Google Login/Registration
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 

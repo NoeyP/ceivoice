@@ -45,10 +45,34 @@ export default function Admin() {
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
   const [availableTags, setAvailableTags] = useState([]);
   const [userScopes, setUserScopes] = useState([]);
+  const [dateRange, setDateRange] = useState([null, null]);
+  const [startDate, endDate] = dateRange;
 
   // =============================
   // API FETCH FUNCTIONS
   // =============================
+
+  const [reportData, setReportData] = useState({
+    statusBreakdown: [],
+    categoryBreakdown: [],
+    avgResolutionHours: 0,
+    totalTickets: 0
+  });
+
+  const fetchReports = async () => {
+    let url = "http://localhost:3000/api/admin/reports/stats";
+    if (startDate && endDate) {
+      const s = startDate.toISOString().split('T')[0];
+      const e = endDate.toISOString().split('T')[0];
+      url += `?startDate=${s}&endDate=${e}`;
+    }
+    const res = await fetch(url);
+    if (res.ok) setReportData(await res.json());
+  };
+
+  useEffect(() => {
+    fetchReports();
+  }, [dateRange]);
 
   const fetchScopes = async () => {
     const tagsRes = await fetch("http://localhost:3000/api/admin/tags");
@@ -134,6 +158,7 @@ export default function Admin() {
     fetchTickets();
     fetchManagementUsers();
     fetchScopes();
+    fetchReports();
 
     const interval = setInterval(() => {
       fetchTickets();
@@ -249,23 +274,23 @@ export default function Admin() {
     }
 
 
-  // 🔥 Load audit history
-  try {
-    const res = await fetch(
-      `http://localhost:3000/api/tickets/${ticket.id}/history`
-    );
+    // 🔥 Load audit history
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/tickets/${ticket.id}/history`
+      );
 
-    if (res.ok) {
-      const data = await res.json();
-      setHistory(data);
-    } else {
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data);
+      } else {
+        setHistory([]);
+      }
+
+    } catch (error) {
+      console.error("History load error:", error);
       setHistory([]);
     }
-
-  } catch (error) {
-    console.error("History load error:", error);
-    setHistory([]);
-  }
 
   };
 
@@ -621,6 +646,69 @@ export default function Admin() {
             Dashboard layout for managing and reviewing tickets.
           </p>
         </header>
+
+        <div className="mb-6 flex items-center gap-4 rounded-xl border bg-white p-4 shadow-sm">
+          <p className="text-sm font-bold text-slate-700">Filter Stats Period:</p>
+          <DatePicker
+            selectsRange={true}
+            startDate={startDate}
+            endDate={endDate}
+            onChange={(update) => setDateRange(update)}
+            isClearable={true}
+            placeholderText="Select a date range"
+            className="rounded-lg border border-slate-300 p-2 text-sm focus:ring-2 focus:ring-slate-900"
+          />
+        </div>
+
+        {/* Admin.jsx - Reporting Dashboard Section (EP06-ST003) */}
+        <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Total Ticket Volume Metric */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total ticket</p>
+            <p className="mt-2 text-3xl font-bold text-slate-900">{reportData.totalTickets}</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Status Breakdown</p>
+            <div className="flex flex-wrap gap-2">
+              {reportData.statusBreakdown.length === 0 ? (
+                <p className="text-sm italic text-slate-400">No status data available.</p>
+              ) : (
+                reportData.statusBreakdown.map(stat => (
+                  <div key={stat.status} className="flex flex-col rounded-lg border bg-blue-50/50 px-3 py-2 border-blue-100">
+                    <span className="text-[10px] font-bold uppercase text-blue-500">{stat.status}</span>
+                    <span className="text-lg font-bold text-slate-800">{stat.count}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Average Resolution Time Metric */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Avg. Resolution</p>
+            <p className="mt-2 text-3xl font-bold text-indigo-600">
+              {reportData.avgResolutionHours} <span className="text-sm font-medium text-slate-400">hours</span>
+            </p>
+          </div>
+
+          {/* Category Breakdown Metric */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Category Breakdown</p>
+            <div className="flex flex-wrap gap-2">
+              {reportData.categoryBreakdown.length === 0 ? (
+                <p className="text-sm italic text-slate-400">No category data available yet.</p>
+              ) : (
+                reportData.categoryBreakdown.map(cat => (
+                  <div key={cat.category} className="flex flex-col rounded-lg border bg-slate-50 px-3 py-2">
+                    <span className="text-[10px] font-bold uppercase text-slate-400">{cat.category}</span>
+                    <span className="text-lg font-bold text-slate-800">{cat.count}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
           <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5 shadow-sm lg:col-span-4">
