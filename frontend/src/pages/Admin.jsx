@@ -56,6 +56,7 @@ export default function Admin() {
     const end = new Date();
     const start = new Date();
     start.setDate(end.getDate() - 29);
+    end.setDate(end.getDate() + 1);
     setDateRange([start, end]);
   };
 
