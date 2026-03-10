@@ -519,6 +519,7 @@ app.get('/api/tickets/public/:trackingId', async (req, res) => {
         status,
         user_email AS userEmail,
         ai_analysis,
+        deadline,
         created_at AS createdAt
        FROM tickets
        WHERE tracking_id = ?`,
@@ -605,9 +606,15 @@ app.get('/api/tickets/:id/comments', async (req, res) => {
     res.status(500).json({ message: "Failed to fetch comments" });
   }
 });
+// ------------------------------
+// EP03 FEATURES
+// ------------------------------
 
 // Admin Route: Update Ticket Status + Admin Edits
 app.patch('/api/tickets/:id/status', async (req, res) => {
+  console.log("FULL BODY:", req.body);
+  console.log("DEADLINE:", req.body.deadline);
+
   const { id } = req.params;
 
   const {
@@ -616,9 +623,19 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
     ai_analysis,
     suggested_resolution,
     category,
+    deadline,
     changed_by,
     comment
   } = req.body;
+  let formattedDeadline = null;
+
+  if (deadline) {
+    formattedDeadline = new Date(deadline)
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+  }
+  console.log("FORMATTED DEADLINE:", formattedDeadline);
 
   try {
 
@@ -639,27 +656,37 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
     // 2️ Update ticket (admin edits + status)
     await db.execute(
       `UPDATE tickets 
-       SET status = ?, 
-           title = ?, 
-           ai_analysis = ?, 
-           suggested_resolution = ?, 
-           category = ?
-       WHERE id = ?`,
+      SET status = ?, 
+          title = ?, 
+          ai_analysis = ?, 
+          suggested_resolution = ?, 
+          category = ?,
+          deadline = ?
+      WHERE id = ?`,
       [
         status,
         title,
         ai_analysis,
         suggested_resolution,
         category,
+        formattedDeadline,
         id
       ]
     );
 
-    let deadlineUpdate = "";
-    if (oldStatus === 'Draft' && status === 'Open') {
+    if (!deadline && oldStatus === 'Draft' && status === 'Open') {
       const threeDaysFromNow = new Date();
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
-      await db.execute('UPDATE tickets SET deadline = ? WHERE id = ?', [threeDaysFromNow, id]);
+
+      const autoDeadline = threeDaysFromNow
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ");
+
+      await db.execute(
+        'UPDATE tickets SET deadline = ? WHERE id = ?',
+        [autoDeadline, id]
+      );
     }
 
     // 3️ Log history (EP04 Audit Trail)
@@ -726,7 +753,6 @@ app.get('/api/admin/tickets', async (req, res) => {
       ORDER BY t.created_at DESC
     `);
 
-    console.log(`✅ Admin fetched ${rows.length} tickets`);
     const rowsWithParticipants = await Promise.all(
       rows.map(async (row) => ({
         ...row,
@@ -759,6 +785,160 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// Admin: Merge multiple tickets into a Draft ticket (EP03-ST004)
+app.post('/api/admin/tickets/merge', async (req, res) => {
+
+  const { draft_ticket_id, ticket_ids, admin_id } = req.body;
+
+  if (!draft_ticket_id || !ticket_ids || ticket_ids.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "draft_ticket_id and ticket_ids are required"
+    });
+  }
+
+  try {
+
+    for (const ticketId of ticket_ids) {
+       if (ticketId === draft_ticket_id) {
+          continue; // skip merging the draft into itself
+        }
+
+      // 1️⃣ Save relation in merged_requests table
+      await db.execute(
+        `INSERT IGNORE INTO merged_requests (draft_ticket_id, original_ticket_id)
+        VALUES (?, ?)`,
+        [draft_ticket_id, ticketId]
+      );
+
+      // 2️⃣ Update original ticket status
+      await db.execute(
+        `UPDATE tickets
+         SET status = 'Merged'
+         WHERE id = ?`,
+        [ticketId]
+      );
+
+      // 3️⃣ Save audit history (EP04)
+      await db.execute(
+        `INSERT INTO ticket_history
+        (ticket_id, old_status, new_status, changed_by, change_type)
+        VALUES (?, ?, ?, ?, 'merge')`,
+        [ticketId, 'Open', 'Merged', admin_id || null]
+      );
+    }
+
+    res.json({
+      success: true,
+      message: `${ticket_ids.length} tickets merged into draft ${draft_ticket_id}`
+    });
+
+  } catch (error) {
+    console.error("Merge error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to merge tickets"
+    });
+  }
+
+});
+
+// Get merged requests for a draft ticket
+app.get('/api/tickets/:id/merged', async (req, res) => {
+
+  const { id } = req.params;
+
+  try {
+
+    const [rows] = await db.execute(
+      `SELECT 
+        t.id,
+        t.tracking_id,
+        t.title,
+        t.user_email,
+        t.created_at
+       FROM merged_requests mr
+       JOIN tickets t ON mr.original_ticket_id = t.id
+       WHERE mr.draft_ticket_id = ?`,
+      [id]
+    );
+
+    res.json({
+      count: rows.length,
+      merged_requests: rows
+    });
+
+  } catch (error) {
+    console.error("Merged fetch error:", error);
+    res.status(500).json({
+      message: "Failed to fetch merged tickets"
+    });
+  }
+
+});
+
+app.get("/api/admin/tickets/:id/linked", async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+
+    const [rows] = await db.execute(
+      `SELECT t.id, t.title, t.ticket_code
+       FROM ticket_links tl
+       JOIN tickets t ON tl.child_ticket_id = t.id
+       WHERE tl.parent_ticket_id = ?`,
+      [ticketId]
+    );
+
+    res.json(rows);
+
+  } catch (error) {
+    console.error("Fetch linked tickets error:", error);
+    res.status(500).json({ error: "Failed to fetch linked tickets" });
+  }
+});
+
+// Admin: Unlink a merged request from a draft ticket
+app.post("/api/admin/tickets/unlink", async (req, res) => {
+  const { draft_ticket_id, original_ticket_id, admin_id } = req.body;
+
+  try {
+
+    // 1️⃣ Remove relation
+    await db.execute(
+      `DELETE FROM merged_requests
+       WHERE draft_ticket_id = ? AND original_ticket_id = ?`,
+      [draft_ticket_id, original_ticket_id]
+    );
+
+    // 2️⃣ Revert status back to Draft
+    await db.execute(
+      `UPDATE tickets
+       SET status = 'Draft'
+       WHERE id = ?`,
+      [original_ticket_id]
+    );
+
+    // 3️⃣ Save history
+    await db.execute(
+      `INSERT INTO ticket_history
+       (ticket_id, old_status, new_status, changed_by, change_type)
+       VALUES (?, 'Merged', 'Draft', ?, 'unlink')`,
+      [original_ticket_id, admin_id || null]
+    );
+
+    res.json({
+      success: true,
+      message: "Ticket unlinked successfully"
+    });
+
+  } catch (error) {
+    console.error("Unlink error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to unlink ticket"
+    });
+  }
+});
 
 // ------------------------------
 // EP04 FEATURES

@@ -85,7 +85,12 @@ export default function AssigneeDashboard() {
   }, []);
 
   const handleManage = async (ticket) => {
-    setSelectedTicket(ticket);
+    setSelectedTicket({
+      ...ticket,
+      deadline: ticket.deadline
+        ? new Date(ticket.deadline).toISOString().slice(0, 16)
+        : ""
+    });
     setNewStatus(ticket.status);
     setSelectedAssignees(ticket.assignees?.map(a => a.id) || []); 
     const [historyRes, commentsRes] = await Promise.all([

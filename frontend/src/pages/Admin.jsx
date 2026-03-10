@@ -1,4 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 const FILTERS = ["Draft", "New", "All"];
 
@@ -35,6 +37,9 @@ export default function Admin() {
   const [replyVisibility, setReplyVisibility] = useState("public");
   const [replyTargetId, setReplyTargetId] = useState(null);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [mergedRequests, setMergedRequests] = useState([]);
+  const [mergedCount, setMergedCount] = useState(0);
+  const [linkedRequests, setLinkedRequests] = useState([]);
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
 
 // =============================
@@ -137,9 +142,13 @@ const toggleSelectTicket = (e, ticketId) => {
 // =============================
 // OPEN TICKET
 // =============================
-
 const openTicket = async (ticket) => {
-  setSelectedTicket(ticket);
+  setSelectedTicket({
+    ...ticket,
+    deadline: ticket.deadline
+      ? new Date(ticket.deadline).toISOString().slice(0,16)
+      : ""
+  });
 
   setCommentDraft("");
   setCommentVisibility("public");
@@ -148,6 +157,7 @@ const openTicket = async (ticket) => {
   setReplyVisibility("public");
   setReplyTargetId(null);
 
+  // Load comments
   try {
     const res = await fetch(
       `http://localhost:3000/api/tickets/${ticket.id}/comments?scope=staff`
@@ -162,6 +172,26 @@ const openTicket = async (ticket) => {
   } catch (error) {
     console.error("Comment load error:", error);
     setComments([]);
+  }
+
+  // 🔥 ADD THIS PART (load merged tickets)
+  try {
+    const res = await fetch(
+      `http://localhost:3000/api/tickets/${ticket.id}/merged`
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      setMergedRequests(data.merged_requests);
+      setMergedCount(data.count);
+    } else {
+      setMergedRequests([]);
+      setMergedCount(0);
+    }
+  } catch (error) {
+    console.error("Merged requests load error:", error);
+    setMergedRequests([]);
+    setMergedCount(0);
   }
 };
 
@@ -323,11 +353,16 @@ const renderCommentNode = (node, depth = 0) => {
     );
   };
 
+  //------------------------
+  // Submit / Update Ticket
+  //------------------------
   const handleUpdateTicket = async (newStatus) => {
-    if (!selectedTicket) return;
+  if (!selectedTicket) return;
 
-    try {
-      const response = await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/status`, {
+  try {
+    const response = await fetch(
+      `http://localhost:3000/api/tickets/${selectedTicket.id}/status`,
+      {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -336,20 +371,103 @@ const renderCommentNode = (node, depth = 0) => {
           suggested_resolution: selectedTicket.suggested_resolution,
           status: newStatus,
           category: selectedTicket.category || "General Inquiry",
-        }),
-      });
-
-      if (response.ok) {
-        const refreshRes = await fetch("http://localhost:3000/api/admin/tickets");
-        const updatedData = await refreshRes.json();
-        setTickets(updatedData);
-        setSelectedTicket(null);
-        alert(`Ticket successfully moved to ${newStatus}!`);
+          deadline: selectedTicket.deadline
+            ? new Date(selectedTicket.deadline)
+                .toISOString()
+                .slice(0,19)
+                .replace("T"," ")
+            : null
+         })
       }
-    } catch (error) {
-      console.error("Update error:", error);
+    );
+
+    if (response.ok) {
+      await fetchTickets();
+      setSelectedTicket(null);
+      alert(`Ticket successfully moved to ${newStatus}!`);
     }
-  };
+  } catch (error) {
+    console.error("Update error:", error);
+  }
+};
+  // Merge Tickets
+  const handleMerge = async () => {
+  console.log("MERGE CLICKED");
+
+  try {
+
+    if (!selectedTicket) {
+      alert("Select a draft ticket to merge into.");
+      return;
+    }
+
+    if (selectedIds.length < 2) {
+      alert("Select at least two tickets to merge.");
+      return;
+    }
+
+    const draftTicketId = selectedTicket.id;
+
+    const response = await fetch("http://localhost:3000/api/admin/tickets/merge", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        draft_ticket_id: draftTicketId,
+        ticket_ids: selectedIds,
+        admin_id: 1
+      })
+    });
+
+    const data = await response.json();
+    console.log("Merge result:", data);
+    if (data.success) {
+      openTicket(selectedTicket); // 🔥 refresh merged list
+    }
+  
+
+    alert("Tickets merged successfully!");
+    setSelectedIds([]);
+
+  } catch (error) {
+    console.error("Merge failed:", error);
+  }
+};
+
+  // --------------------------
+  // ---------Unlink-----------
+  // --------------------------
+  const handleUnlink = async (ticketId) => {
+
+  try {
+
+    const response = await fetch(
+      "http://localhost:3000/api/admin/tickets/unlink",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          draft_ticket_id: selectedTicket.id,
+          original_ticket_id: ticketId,
+          admin_id: 1
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (data.success) {
+      openTicket(selectedTicket); // 🔥 refresh merged list
+    }
+
+  } catch (error) {
+    console.error("Unlink failed:", error);
+  }
+
+};
 
   // Refreshed Ticket Assignees and people involved
   const fetchTicketDetails = async (ticketId) => {
@@ -357,13 +475,30 @@ const renderCommentNode = (node, depth = 0) => {
     const res = await fetch(`http://localhost:3000/api/tickets/${ticketId}`);
     const data = await res.json();
 
-    setSelectedTicket(data.ticket || data);
+    const ticketData = data.ticket || data;
+
+    let formattedDeadline = "";
+
+    if (ticketData.deadline) {
+      const date = new Date(ticketData.deadline);
+      if (!isNaN(date.getTime())) {
+        formattedDeadline = date.toISOString().slice(0,16);
+      }
+    }
+
+    setSelectedTicket({
+      ...ticketData,
+      deadline: formattedDeadline
+    });
 
   } catch (error) {
     console.error("Failed to refresh ticket:", error);
   }
 };
 
+// ----------------------------
+// Assign Ticket to an assignee
+// ----------------------------
   const handleAssignTicket = async (userId) => {
   try {
     await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/reassign`, {
@@ -385,6 +520,19 @@ const renderCommentNode = (node, depth = 0) => {
 
   } catch (err) {
     console.error("Assignment failed:", err);
+  }
+};
+
+  const loadMergedRequests = async (ticketId) => {
+  try {
+    const res = await fetch(`http://localhost:3000/api/tickets/${ticketId}/merged`);
+    const data = await res.json();
+
+    setMergedRequests(data.merged_requests);
+    setMergedCount(data.count);
+
+  } catch (err) {
+    console.error("Failed to fetch merged tickets", err);
   }
 };
 
@@ -460,9 +608,10 @@ const renderCommentNode = (node, depth = 0) => {
 
             <div className="border-t border-slate-200 pt-5">
               <h3 className="text-xl font-semibold text-slate-950">Merge into Draft</h3>
+              
               <button
-                disabled={!mergeEnabled}
-                className="mt-5 w-full rounded-xl bg-slate-400 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={handleMerge}
+                className="mt-5 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
               >
                 Merge Selected Drafts
               </button>
@@ -524,6 +673,28 @@ const renderCommentNode = (node, depth = 0) => {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-slate-700">
+                        Deadline
+                      </label>
+
+                      <DatePicker
+                        selected={
+                          selectedTicket?.deadline
+                            ? new Date(selectedTicket.deadline)
+                            : null
+                        }
+                        onChange={(date) =>
+                          setSelectedTicket((prev) => ({
+                            ...prev,
+                            deadline: date
+                          }))
+                        }
+                        showTimeSelect
+                        dateFormat="yyyy-MM-dd HH:mm"
+                        className="w-full rounded-lg border border-slate-300 p-2.5"
+                      />
+                    </div>
                     <div>
                       <label className="mb-1 block text-sm font-semibold text-slate-700">Category</label>
                       <select
@@ -626,6 +797,37 @@ const renderCommentNode = (node, depth = 0) => {
                     <p className="mb-1 text-[10px] font-bold uppercase text-slate-400">Original User Message</p>
                     <p className="text-sm italic text-slate-600">"{selectedTicket.original_message || "No content"}"</p>
                   </div>
+                  {/* Linked Requests */}
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700">
+                      Linked Requests ({mergedCount})
+                    </h3>
+
+                    {mergedRequests.length === 0 ? (
+                      <p className="mt-2 text-sm italic text-slate-500">
+                        No merged requests
+                      </p>
+                    ) : (
+                      <ul className="mt-2 space-y-1">
+                        {mergedRequests.map((req) => (
+                            <li key={req.id} className="flex justify-between text-sm text-slate-700">
+
+                              <span>
+                                {req.tracking_id} – {req.title}
+                              </span>
+
+                              <button
+                                onClick={() => handleUnlink(req.id)}
+                                className="text-red-600 hover:underline text-xs"
+                              >
+                                Unlink
+                              </button>
+
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                  </div>
 
                   <div className="flex gap-4 border-t pt-4">
                     <button
@@ -635,10 +837,10 @@ const renderCommentNode = (node, depth = 0) => {
                       Keep as Draft
                     </button>
                     <button
-                      onClick={() => handleUpdateTicket("Open")}
+                      onClick={() => handleUpdateTicket("New")}
                       className="flex-[2] rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 shadow-lg"
                     >
-                      Approve & Open
+                      Submit
                     </button>
                   </div>
 

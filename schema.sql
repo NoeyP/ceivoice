@@ -68,3 +68,16 @@ CREATE TABLE IF NOT EXISTS ticket_assignees (
     FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS merged_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    draft_ticket_id INT NOT NULL,
+    original_ticket_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    INDEX idx_draft_ticket (draft_ticket_id),
+    INDEX idx_original_ticket (original_ticket_id),
+
+    FOREIGN KEY (draft_ticket_id) REFERENCES tickets(id) ON DELETE CASCADE,
+    FOREIGN KEY (original_ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+);
