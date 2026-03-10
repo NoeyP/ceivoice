@@ -40,160 +40,192 @@ export default function Admin() {
   const [mergedRequests, setMergedRequests] = useState([]);
   const [mergedCount, setMergedCount] = useState(0);
   const [linkedRequests, setLinkedRequests] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const user = JSON.parse(localStorage.getItem("ceivoice_user") || "null");
   const [history, setHistory] = useState([]);
 
-// =============================
-// API FETCH FUNCTIONS
-// =============================
+  // =============================
+  // API FETCH FUNCTIONS
+  // =============================
 
-const fetchUsers = async () => {
-  try {
-    const res = await fetch("http://localhost:3000/api/users");
-
-    if (res.ok) {
-      const data = await res.json();
-      setUsers(data);
+  const fetchManagementUsers = async () => {
+    try {
+      const res = await fetch("http://localhost:3000/api/admin/management/users");
+      if (res.ok) {
+        const data = await res.json();
+        setAllUsers(data);
+      }
+    } catch (err) {
+      console.error("Management user fetch error:", err)
     }
-  } catch (err) {
-    console.error("User fetch error:", err);
-  }
-};
+  };
 
-const fetchTickets = async () => {
-  try {
-    const response = await fetch("http://localhost:3000/api/admin/tickets");
-
-    if (response.ok) {
-      const data = await response.json();
-      setTickets(data);
+  const handleRoleToggle = async (userId, currentRole) => {
+    const newRole = currentRole === 'user' ? 'assignee' : 'user';
+    try {
+      const res = await fetch(`http://localhost:3000/api/admin/users/${userId}/role`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole })
+      });
+      if (res.ok) {
+        fetchManagementUsers();
+        fetchUsers();
+      }
+    } catch (err) {
+      console.error("Role toggle error:", err);
     }
-  } catch (error) {
-    console.error("Fetch error:", error);
-  }
-};
+  };
 
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch("http://localhost:3000/api/users");
 
-// =============================
-// INITIAL LOAD
-// =============================
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data);
+      }
+    } catch (err) {
+      console.error("User fetch error:", err);
+    }
+  };
 
-useEffect(() => {
-  fetchUsers();
-  fetchTickets();
+  const fetchTickets = async () => {
+    try {
+      const response = await fetch("http://localhost:3000/api/admin/tickets");
 
-  const interval = setInterval(() => {
-    fetchTickets();
-  }, 5000); // refresh every 5 seconds
-
-  return () => clearInterval(interval);
-
-}, []);
-
-
-// =============================
-// MEMOIZED VALUES
-// =============================
-
-const filteredTickets = useMemo(() => {
-  if (activeFilter === "All") return tickets;
-  return tickets.filter((ticket) => ticket.status === activeFilter);
-}, [tickets, activeFilter]);
-
-const draftCount = useMemo(() => {
-  return tickets.filter((ticket) => ticket.status === "Draft").length;
-}, [tickets]);
-
-const mergeEnabled = selectedIds.length >= 2;
-
-const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
-
-const participants =
-  selectedTicket?.participants || {
-    creator: null,
-    assignees: [],
-    followers: [],
+      if (response.ok) {
+        const data = await response.json();
+        setTickets(data);
+      }
+    } catch (error) {
+      console.error("Fetch error:", error);
+    }
   };
 
 
-// =============================
-// HELPERS
-// =============================
+  // =============================
+  // INITIAL LOAD
+  // =============================
 
-const participantLabel = (person, fallbackName = "Unknown") => {
-  if (!person) return fallbackName;
+  useEffect(() => {
+    fetchUsers();
+    fetchTickets();
+    fetchManagementUsers();
 
-  const name = person.name || person.username || fallbackName;
-  const email = person.email ? ` (${person.email})` : "";
+    const interval = setInterval(() => {
+      fetchTickets();
+    }, 5000); // refresh every 5 seconds
 
-  return `${name}${email}`;
-};
+    return () => clearInterval(interval);
 
-const toggleSelectTicket = (e, ticketId) => {
-  e.stopPropagation();
-
-  setSelectedIds((prev) =>
-    prev.includes(ticketId)
-      ? prev.filter((id) => id !== ticketId)
-      : [...prev, ticketId]
-  );
-};
+  }, []);
 
 
-// =============================
-// OPEN TICKET
-// =============================
-const openTicket = async (ticket) => {
-  setSelectedTicket({
-    ...ticket,
-    deadline: ticket.deadline
-      ? new Date(ticket.deadline).toISOString().slice(0,16)
-      : ""
-  });
+  // =============================
+  // MEMOIZED VALUES
+  // =============================
 
-  setCommentDraft("");
-  setCommentVisibility("public");
+  const filteredTickets = useMemo(() => {
+    if (activeFilter === "All") return tickets;
+    return tickets.filter((ticket) => ticket.status === activeFilter);
+  }, [tickets, activeFilter]);
 
-  setReplyDraft("");
-  setReplyVisibility("public");
-  setReplyTargetId(null);
+  const draftCount = useMemo(() => {
+    return tickets.filter((ticket) => ticket.status === "Draft").length;
+  }, [tickets]);
 
-  // Load comments
-  try {
-    const res = await fetch(
-      `http://localhost:3000/api/tickets/${ticket.id}/comments?scope=staff`
+  const mergeEnabled = selectedIds.length >= 2;
+
+  const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
+
+  const participants =
+    selectedTicket?.participants || {
+      creator: null,
+      assignees: [],
+      followers: [],
+    };
+
+
+  // =============================
+  // HELPERS
+  // =============================
+
+  const participantLabel = (person, fallbackName = "Unknown") => {
+    if (!person) return fallbackName;
+
+    const name = person.name || person.username || fallbackName;
+    const email = person.email ? ` (${person.email})` : "";
+
+    return `${name}${email}`;
+  };
+
+  const toggleSelectTicket = (e, ticketId) => {
+    e.stopPropagation();
+
+    setSelectedIds((prev) =>
+      prev.includes(ticketId)
+        ? prev.filter((id) => id !== ticketId)
+        : [...prev, ticketId]
     );
+  };
 
-    if (res.ok) {
-      const data = await res.json();
-      setComments(data);
-    } else {
+
+  // =============================
+  // OPEN TICKET
+  // =============================
+  const openTicket = async (ticket) => {
+    setSelectedTicket({
+      ...ticket,
+      deadline: ticket.deadline
+        ? new Date(ticket.deadline).toISOString().slice(0, 16)
+        : ""
+    });
+
+    setCommentDraft("");
+    setCommentVisibility("public");
+
+    setReplyDraft("");
+    setReplyVisibility("public");
+    setReplyTargetId(null);
+
+    // Load comments
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/tickets/${ticket.id}/comments?scope=staff`
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        setComments(data);
+      } else {
+        setComments([]);
+      }
+    } catch (error) {
+      console.error("Comment load error:", error);
       setComments([]);
     }
-  } catch (error) {
-    console.error("Comment load error:", error);
-    setComments([]);
-  }
 
-  // 🔥 ADD THIS PART (load merged tickets)
-  try {
-    const res = await fetch(
-      `http://localhost:3000/api/tickets/${ticket.id}/merged`
-    );
+    // 🔥 ADD THIS PART (load merged tickets)
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/tickets/${ticket.id}/merged`
+      );
 
-    if (res.ok) {
-      const data = await res.json();
-      setMergedRequests(data.merged_requests);
-      setMergedCount(data.count);
-    } else {
+      if (res.ok) {
+        const data = await res.json();
+        setMergedRequests(data.merged_requests);
+        setMergedCount(data.count);
+      } else {
+        setMergedRequests([]);
+        setMergedCount(0);
+      }
+    } catch (error) {
+      console.error("Merged requests load error:", error);
       setMergedRequests([]);
       setMergedCount(0);
     }
-  } catch (error) {
-    console.error("Merged requests load error:", error);
-    setMergedRequests([]);
-    setMergedCount(0);
-  }
+
 
   // 🔥 Load audit history
   try {
@@ -216,75 +248,75 @@ const openTicket = async (ticket) => {
   };
 
 
-// =============================
-// SUBMIT COMMENT
-// =============================
+  // =============================
+  // SUBMIT COMMENT
+  // =============================
 
-const submitComment = async (
-  rawMessage,
-  parentId = null,
-  visibility = "public"
-) => {
-  if (!selectedTicket) return;
+  const submitComment = async (
+    rawMessage,
+    parentId = null,
+    visibility = "public"
+  ) => {
+    if (!selectedTicket) return;
 
-  const message = String(rawMessage || "").trim();
-  if (!message) return;
+    const message = String(rawMessage || "").trim();
+    if (!message) return;
 
-  setCommentSubmitting(true);
+    setCommentSubmitting(true);
 
-  try {
-    const res = await fetch(
-      `http://localhost:3000/api/tickets/${selectedTicket.id}/comments`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message,
-          visibility,
-          user_id: user?.id || null,
-          actor_role: "admin",
-          parent_id: parentId,
-        }),
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/tickets/${selectedTicket.id}/comments`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message,
+            visibility,
+            user_id: user?.id || null,
+            actor_role: "admin",
+            parent_id: parentId,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to post comment");
       }
-    );
 
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.message || "Failed to post comment");
+      const newComment = await res.json();
+
+      setComments((prev) => [...prev, newComment]);
+
+      if (parentId) {
+        setReplyDraft("");
+        setReplyVisibility("public");
+        setReplyTargetId(null);
+      } else {
+        setCommentDraft("");
+      }
+    } catch (error) {
+      alert(error.message || "Failed to post comment");
+    } finally {
+      setCommentSubmitting(false);
     }
-
-    const newComment = await res.json();
-
-    setComments((prev) => [...prev, newComment]);
-
-    if (parentId) {
-      setReplyDraft("");
-      setReplyVisibility("public");
-      setReplyTargetId(null);
-    } else {
-      setCommentDraft("");
-    }
-  } catch (error) {
-    alert(error.message || "Failed to post comment");
-  } finally {
-    setCommentSubmitting(false);
-  }
-};
+  };
 
 
-// =============================
-// COMMENT TREE RENDER
-// =============================
+  // =============================
+  // COMMENT TREE RENDER
+  // =============================
 
-const renderCommentNode = (node, depth = 0) => {
-  const INDENT = 20;
+  const renderCommentNode = (node, depth = 0) => {
+    const INDENT = 20;
 
-  const badgeCls =
-    node.visibility === "internal"
-      ? "border-amber-200 bg-amber-100 text-amber-800"
-      : "border-blue-200 bg-blue-50 text-blue-700";
+    const badgeCls =
+      node.visibility === "internal"
+        ? "border-amber-200 bg-amber-100 text-amber-800"
+        : "border-blue-200 bg-blue-50 text-blue-700";
 
     return (
       <div
@@ -377,186 +409,186 @@ const renderCommentNode = (node, depth = 0) => {
   // Submit / Update Ticket
   //------------------------
   const handleUpdateTicket = async (newStatus) => {
-  if (!selectedTicket) return;
+    if (!selectedTicket) return;
 
-  try {
-    const response = await fetch(
-      `http://localhost:3000/api/tickets/${selectedTicket.id}/status`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: selectedTicket.title,
-          ai_analysis: selectedTicket.ai_analysis,
-          suggested_resolution: selectedTicket.suggested_resolution,
-          status: newStatus,
-          category: selectedTicket.category || "General Inquiry",
-          deadline: selectedTicket.deadline
-            ? new Date(selectedTicket.deadline)
+    try {
+      const response = await fetch(
+        `http://localhost:3000/api/tickets/${selectedTicket.id}/status`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: selectedTicket.title,
+            ai_analysis: selectedTicket.ai_analysis,
+            suggested_resolution: selectedTicket.suggested_resolution,
+            status: newStatus,
+            category: selectedTicket.category || "General Inquiry",
+            deadline: selectedTicket.deadline
+              ? new Date(selectedTicket.deadline)
                 .toISOString()
-                .slice(0,19)
-                .replace("T"," ")
-            : null
-         })
-      }
-    );
+                .slice(0, 19)
+                .replace("T", " ")
+              : null
+          })
+        }
+      );
 
-    if (response.ok) {
-      await fetchTickets();
-      setSelectedTicket(null);
-      alert(`Ticket successfully moved to ${newStatus}!`);
+      if (response.ok) {
+        await fetchTickets();
+        setSelectedTicket(null);
+        alert(`Ticket successfully moved to ${newStatus}!`);
+      }
+    } catch (error) {
+      console.error("Update error:", error);
     }
-  } catch (error) {
-    console.error("Update error:", error);
-  }
-};
+  };
   // Merge Tickets
   const handleMerge = async () => {
-  console.log("MERGE CLICKED");
+    console.log("MERGE CLICKED");
 
-  try {
+    try {
 
-    if (!selectedTicket) {
-      alert("Select a draft ticket to merge into.");
-      return;
+      if (!selectedTicket) {
+        alert("Select a draft ticket to merge into.");
+        return;
+      }
+
+      if (selectedIds.length < 2) {
+        alert("Select at least two tickets to merge.");
+        return;
+      }
+
+      const draftTicketId = selectedTicket.id;
+
+      const response = await fetch("http://localhost:3000/api/admin/tickets/merge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          draft_ticket_id: draftTicketId,
+          ticket_ids: selectedIds,
+          admin_id: 1
+        })
+      });
+
+      const data = await response.json();
+      console.log("Merge result:", data);
+      if (data.success) {
+        openTicket(selectedTicket); // 🔥 refresh merged list
+      }
+
+
+      alert("Tickets merged successfully!");
+      setSelectedIds([]);
+
+    } catch (error) {
+      console.error("Merge failed:", error);
     }
-
-    if (selectedIds.length < 2) {
-      alert("Select at least two tickets to merge.");
-      return;
-    }
-
-    const draftTicketId = selectedTicket.id;
-
-    const response = await fetch("http://localhost:3000/api/admin/tickets/merge", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        draft_ticket_id: draftTicketId,
-        ticket_ids: selectedIds,
-        admin_id: 1
-      })
-    });
-
-    const data = await response.json();
-    console.log("Merge result:", data);
-    if (data.success) {
-      openTicket(selectedTicket); // 🔥 refresh merged list
-    }
-  
-
-    alert("Tickets merged successfully!");
-    setSelectedIds([]);
-
-  } catch (error) {
-    console.error("Merge failed:", error);
-  }
-};
+  };
 
   // --------------------------
   // ---------Unlink-----------
   // --------------------------
   const handleUnlink = async (ticketId) => {
 
-  try {
+    try {
 
-    const response = await fetch(
-      "http://localhost:3000/api/admin/tickets/unlink",
-      {
-        method: "POST",
+      const response = await fetch(
+        "http://localhost:3000/api/admin/tickets/unlink",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            draft_ticket_id: selectedTicket.id,
+            original_ticket_id: ticketId,
+            admin_id: 1
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        openTicket(selectedTicket); // 🔥 refresh merged list
+      }
+
+    } catch (error) {
+      console.error("Unlink failed:", error);
+    }
+
+  };
+
+  // Refreshed Ticket Assignees and people involved
+  const fetchTicketDetails = async (ticketId) => {
+    try {
+      const res = await fetch(`http://localhost:3000/api/tickets/${ticketId}`);
+      const data = await res.json();
+
+      const ticketData = data.ticket || data;
+
+      let formattedDeadline = "";
+
+      if (ticketData.deadline) {
+        const date = new Date(ticketData.deadline);
+        if (!isNaN(date.getTime())) {
+          formattedDeadline = date.toISOString().slice(0, 16);
+        }
+      }
+
+      setSelectedTicket({
+        ...ticketData,
+        deadline: formattedDeadline
+      });
+
+    } catch (error) {
+      console.error("Failed to refresh ticket:", error);
+    }
+  };
+
+  // ----------------------------
+  // Assign Ticket to an assignee
+  // ----------------------------
+  const handleAssignTicket = async (userId) => {
+    try {
+      await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/reassign`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          draft_ticket_id: selectedTicket.id,
-          original_ticket_id: ticketId,
-          admin_id: 1
+          new_assignee_ids: [userId],
+          changed_by: 1
         })
-      }
-    );
+      });
 
-    const data = await response.json();
+      alert("Ticket assigned successfully");
 
-    if (data.success) {
-      openTicket(selectedTicket); // 🔥 refresh merged list
+      // 👇 REFRESH TICKET DATA
+      await fetchTicketDetails(selectedTicket.id);
+      await fetchTickets(); // Refresh Ticket List
+
+    } catch (err) {
+      console.error("Assignment failed:", err);
     }
-
-  } catch (error) {
-    console.error("Unlink failed:", error);
-  }
-
-};
-
-  // Refreshed Ticket Assignees and people involved
-  const fetchTicketDetails = async (ticketId) => {
-  try {
-    const res = await fetch(`http://localhost:3000/api/tickets/${ticketId}`);
-    const data = await res.json();
-
-    const ticketData = data.ticket || data;
-
-    let formattedDeadline = "";
-
-    if (ticketData.deadline) {
-      const date = new Date(ticketData.deadline);
-      if (!isNaN(date.getTime())) {
-        formattedDeadline = date.toISOString().slice(0,16);
-      }
-    }
-
-    setSelectedTicket({
-      ...ticketData,
-      deadline: formattedDeadline
-    });
-
-  } catch (error) {
-    console.error("Failed to refresh ticket:", error);
-  }
-};
-
-// ----------------------------
-// Assign Ticket to an assignee
-// ----------------------------
-  const handleAssignTicket = async (userId) => {
-  try {
-    await fetch(`http://localhost:3000/api/tickets/${selectedTicket.id}/reassign`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        new_assignee_ids: [userId],
-        changed_by: 1
-      })
-    });
-
-    alert("Ticket assigned successfully");
-
-    // 👇 REFRESH TICKET DATA
-    await fetchTicketDetails(selectedTicket.id);
-    await fetchTickets(); // Refresh Ticket List
-
-  } catch (err) {
-    console.error("Assignment failed:", err);
-  }
-};
+  };
 
   const loadMergedRequests = async (ticketId) => {
-  try {
-    const res = await fetch(`http://localhost:3000/api/tickets/${ticketId}/merged`);
-    const data = await res.json();
+    try {
+      const res = await fetch(`http://localhost:3000/api/tickets/${ticketId}/merged`);
+      const data = await res.json();
 
-    setMergedRequests(data.merged_requests);
-    setMergedCount(data.count);
+      setMergedRequests(data.merged_requests);
+      setMergedCount(data.count);
 
-  } catch (err) {
-    console.error("Failed to fetch merged tickets", err);
-  }
-};
+    } catch (err) {
+      console.error("Failed to fetch merged tickets", err);
+    }
+  };
 
-  
+
 
   return (
     <div className="min-h-screen bg-white">
@@ -582,11 +614,10 @@ const renderCommentNode = (node, depth = 0) => {
                 <button
                   key={filter}
                   onClick={() => setActiveFilter(filter)}
-                  className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${
-                    activeFilter === filter
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${activeFilter === filter
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   {filter}
                 </button>
@@ -602,11 +633,10 @@ const renderCommentNode = (node, depth = 0) => {
                     <div
                       key={ticket.id}
                       onClick={() => openTicket(ticket)}
-                      className={`flex items-start gap-3 rounded-lg border p-3 transition cursor-pointer ${
-                        selectedIds.includes(ticket.id)
-                          ? "border-slate-400 bg-slate-100/50"
-                          : "border-slate-200 bg-white hover:border-slate-300"
-                      } ${selectedTicket?.id === ticket.id ? "ring-2 ring-slate-900" : ""}`}
+                      className={`flex items-start gap-3 rounded-lg border p-3 transition cursor-pointer ${selectedIds.includes(ticket.id)
+                        ? "border-slate-400 bg-slate-100/50"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                        } ${selectedTicket?.id === ticket.id ? "ring-2 ring-slate-900" : ""}`}
                     >
                       <input
                         type="checkbox"
@@ -628,7 +658,7 @@ const renderCommentNode = (node, depth = 0) => {
 
             <div className="border-t border-slate-200 pt-5">
               <h3 className="text-xl font-semibold text-slate-950">Merge into Draft</h3>
-              
+
               <button
                 onClick={handleMerge}
                 className="mt-5 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
@@ -636,6 +666,31 @@ const renderCommentNode = (node, depth = 0) => {
                 Merge Selected Drafts
               </button>
             </div>
+
+
+            <div className="mt-8 border-t border-slate-200 pt-5">
+              <h3 className="text-xl font-semibold text-slate-950 mb-4">User Management</h3>
+              <div className="space-y-3">
+                {allUsers.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 truncate">{u.username}</p>
+                      <p className="text-[10px] uppercase font-bold text-slate-500">{u.role}</p>
+                    </div>
+                    <button
+                      onClick={() => handleRoleToggle(u.id, u.role)}
+                      className={`ml-4 rounded-md px-2 py-1 text-xs font-bold transition-colors ${u.role === 'user'
+                        ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                        : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                        }`}
+                    >
+                      {u.role === 'user' ? 'Promote' : 'Demote'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-6 shadow-sm lg:col-span-8">
@@ -647,12 +702,12 @@ const renderCommentNode = (node, depth = 0) => {
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="flex items-center justify-between border-b pb-4">
+                <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900">Review Ticket</h2>
                     <p className="text-sm text-slate-500">{selectedTicket.tracking_id}</p>
                   </div>
-                  <span className="rounded bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">
+                  <span className="inline-flex w-fit rounded bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">
                     {selectedTicket.status?.toUpperCase()}
                   </span>
                 </div>
@@ -692,7 +747,7 @@ const renderCommentNode = (node, depth = 0) => {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="mb-1 block text-sm font-semibold text-slate-700">
                         Deadline
@@ -858,26 +913,27 @@ const renderCommentNode = (node, depth = 0) => {
                     ) : (
                       <ul className="mt-2 space-y-1">
                         {mergedRequests.map((req) => (
-                            <li key={req.id} className="flex justify-between text-sm text-slate-700">
 
-                              <span>
-                                {req.tracking_id} – {req.title}
-                              </span>
+                          <li key={req.id} className="flex flex-col gap-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
 
-                              <button
-                                onClick={() => handleUnlink(req.id)}
-                                className="text-red-600 hover:underline text-xs"
-                              >
-                                Unlink
-                              </button>
+                            <span>
+                              {req.tracking_id} – {req.title}
+                            </span>
 
-                            </li>
-                          ))}
+                            <button
+                              onClick={() => handleUnlink(req.id)}
+                              className="text-red-600 hover:underline text-xs"
+                            >
+                              Unlink
+                            </button>
+
+                          </li>
+                        ))}
                       </ul>
                     )}
                   </div>
 
-                  <div className="flex gap-4 border-t pt-4">
+                  <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:gap-4">
                     <button
                       onClick={() => handleUpdateTicket("Draft")}
                       className="flex-1 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"

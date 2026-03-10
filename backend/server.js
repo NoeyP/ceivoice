@@ -711,7 +711,7 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
         WHERE m.draft_ticket_id = ?
       `, [id, id]);
 
-}
+    }
 
     // 3️ Log history (EP04 Audit Trail)
     await db.execute(
@@ -817,6 +817,7 @@ app.get('/api/users', async (req, res) => {
     const [rows] = await db.execute(`
       SELECT id, username
       FROM users
+      WHERE role IN ('assignee', 'admin')
       ORDER BY username ASC
     `);
 
@@ -871,9 +872,9 @@ app.post('/api/admin/tickets/merge', async (req, res) => {
     }
 
     for (const ticketId of ticket_ids) {
-       if (ticketId === draft_ticket_id) {
-          continue; // skip merging the draft into itself
-        }
+      if (ticketId === draft_ticket_id) {
+        continue; // skip merging the draft into itself
+      }
 
       // 1️⃣ Save relation in merged_requests table
       await db.execute(
@@ -1109,7 +1110,7 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
         `SELECT username FROM users WHERE id IN (?)`,
         [new_assignee_ids]
       );
-      
+
       newNames = newRows.map(u => u.username).join(", ");
 
       await db.execute(
@@ -1135,19 +1136,37 @@ app.patch('/api/tickets/:id/reassign', async (req, res) => {
   }
 });
 
+app.get('/api/admin/management/users', async (req, res) => {
+  try {
+    const [rows] = await db.execute('SELECT id, username, email, role FROM users ORDER BY username ASC');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to load management list" });
+  }
+});
 
 // Staff list
 app.get('/api/staff', async (req, res) => {
   try {
 
     const [rows] = await db.execute(
-      'SELECT id, username FROM users'
+      "SELECT id, username FROM users WHERE role IN ('assignee', 'admin') ORDER BY username ASC"
     );
-
     res.json(rows);
-
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch staff" });
+  }
+});
+
+app.patch('/api/admin/users/:id/role', async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+
+  try {
+    await db.execute("UPDATE users SET role = ? WHERE id = ?", [role, id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update role" });
   }
 });
 
