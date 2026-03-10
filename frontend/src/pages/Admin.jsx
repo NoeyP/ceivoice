@@ -648,7 +648,7 @@ export default function Admin() {
 
 
             <div className="mt-8 border-t border-slate-200 pt-5">
-              <h3 className="text-xl font-semibold text-slate-950 mb-4">User Management (ST001)</h3>
+              <h3 className="text-xl font-semibold text-slate-950 mb-4">User Management</h3>
               <div className="space-y-3">
                 {allUsers.map((u) => (
                   <div key={u.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 text-sm">
