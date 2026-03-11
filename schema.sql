@@ -108,3 +108,16 @@ CREATE TABLE IF NOT EXISTS user_scopes (
 );
 
 INSERT IGNORE INTO scope_tags (name) VALUES ('IT'), ('HR'), ('Finance');
+
+-- Auto AI Ticket Assignment
+ALTER TABLE users
+ADD COLUMN status ENUM('active','inactive') DEFAULT 'active',
+ADD COLUMN scope VARCHAR(100) DEFAULT NULL;
+
+INSERT INTO users (username, email, password_hash, role, status, scope)
+VALUES
+('John Carter', 'john.carter@company.com', 'test123', 'assignee', 'active', 'Technical Support'),
+('Sarah Mitchell', 'sarah.mitchell@company.com', 'test123', 'assignee', 'active', 'Billing'),
+('David Chen', 'david.chen@company.com', 'test123', 'assignee', 'active', 'Feature Request'),
+('Emily Rodriguez', 'emily.rodriguez@company.com', 'test123', 'assignee', 'active', 'Account Access'),
+('Michael Thompson', 'michael.thompson@company.com', 'test123', 'assignee', 'active', 'General Inquiry');
